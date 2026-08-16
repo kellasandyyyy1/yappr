@@ -14,8 +14,16 @@ import { useState, useEffect } from 'react';
  * (`appType: 'spa'`) and the Express catch-all does the same in production.
  */
 
-/** Paths that render outside the authenticated shell. */
-export const PUBLIC_ROUTES = ['/privacy-policy', '/terms-of-conditions'] as const;
+/**
+ * Paths that render outside the authenticated shell.
+ *
+ * `/reset-password` must be here. A recovery link establishes a session, so
+ * without an explicit public route the app would treat the visitor as signed
+ * in and drop them on the feed — with no way to set the new password they came
+ * to set. It was missing entirely: reset emails pointed at a path nothing
+ * served.
+ */
+export const PUBLIC_ROUTES = ['/privacy-policy', '/terms-of-conditions', '/reset-password'] as const;
 export type PublicRoute = (typeof PUBLIC_ROUTES)[number];
 
 export function isPublicRoute(pathname: string): pathname is PublicRoute {

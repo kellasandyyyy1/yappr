@@ -25,6 +25,7 @@ import { motion, AnimatePresence } from 'motion/react';
 import { cn } from './lib/utils';
 import { LegalPage } from './components/LegalPage';
 import { LegalConsentModal } from './components/LegalConsentModal';
+import { ResetPasswordView } from './components/ResetPasswordView';
 import { usePathname, isPublicRoute, normalizePath, navigate } from './lib/router';
 import { fetchLegalManifest, needsReconsent } from './lib/legal';
 import { parseProfileQr } from './lib/brand';
@@ -228,6 +229,18 @@ export default function App() {
       teardown();
     };
   }, []);
+
+  // Password reset. Checked before the auth gate AND before the loading
+  // spinner, because a recovery link establishes a real session — so the
+  // normal flow would treat the visitor as signed in and drop them on the
+  // feed, with no way to set the password they came to set.
+  if (normalizePath(pathname) === '/reset-password') {
+    return (
+      <ToastProvider>
+        <ResetPasswordView />
+      </ToastProvider>
+    );
+  }
 
   // Legal pages are public: they render before the auth gate and before the
   // loading spinner, so they're reachable while signed out, while signing in,
