@@ -22,6 +22,7 @@
     "icons": "node scripts/generate-icons.mjs",
     "verify:pwa": "node scripts/verify-pwa.mjs",
     "verify:vapid": "node scripts/verify-vapid.mjs",
+    "test:push": "tsx scripts/test-send-push.ts",
     "preview": "vite preview",
     "clean": "rm -rf dist",
     "lint": "tsc --noEmit",
