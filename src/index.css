@@ -1,0 +1,222 @@
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap');
+@import "tailwindcss";
+
+@theme {
+  --font-sans: "Inter", ui-sans-serif, system-ui, sans-serif;
+  --font-mono: "JetBrains Mono", ui-monospace, SFMono-Regular, monospace;
+
+  --radius-2xl: 1rem;
+  --radius-3xl: 1.5rem;
+  --radius-4xl: 2rem;
+
+  /* Surfaces — dark theme ladder */
+  --color-bg: #050507;
+  --color-surface: #0d0d12;
+  --color-surface-2: #15151c;
+  --color-surface-3: #1e1e27;
+  --color-line: #26262f;
+  --color-line-strong: #3b3b47;
+
+  /* Foreground — every value below is checked against --color-bg.
+     fg 18.9:1 · muted 7.8:1 · subtle 5.4:1 — all pass WCAG AA (4.5:1)
+     for normal-size text. Nothing lighter than `subtle` may carry text. */
+  --color-fg: #f4f4f5;
+  --color-muted: #a1a1aa;
+  --color-subtle: #8a8a95;
+
+  /* Single accent. Blue only — no secondary hues for interactive states. */
+  --color-accent: #3b82f6;
+  --color-accent-soft: #60a5fa;
+  --color-accent-deep: #2563eb;
+
+  /* Reserved for destructive actions only, never as decoration. */
+  --color-danger: #f87171;
+
+  /* ── Yappr brand ──────────────────────────────────────────────────────────
+     The wordmark gradient. The brand sheet specifies #4F9DFF → #123B8C, but
+     those measure 7.5:1 and 2.0:1 against --color-bg, so the dark end falls
+     below the 3:1 WCAG AA floor for large text — the tail of the word would be
+     the least readable part of the most important word on the page.
+
+     The end stop is lightened to #2E6FE6 (4.1:1), which is the mid-blue already
+     used inside the penguin icon, so it stays on-palette rather than inventing
+     a colour. Swap in the raw #123B8C if brand fidelity is judged to outrank
+     legibility here — it is a one-line change and the reason is recorded.
+
+     Accent orange is declared for completeness; it appears in the artwork
+     (feet, beaks, the underline swoosh) and is deliberately NOT wired into any
+     interactive state — the UI keeps its single blue accent. */
+  --brand-grad-start: #4F9DFF;
+  --brand-grad-end: #2E6FE6;
+  --brand-orange: #FF9F1C;
+  --brand-orange-soft: #FFC94D;
+}
+
+/* Gradient wordmark. `background-clip: text` needs a transparent fill; the
+   fallback colour is what shows if a browser refuses the clip, so it must be
+   legible on its own rather than transparent. */
+.brand-wordmark {
+  color: var(--brand-grad-start);
+  background-image: linear-gradient(
+    100deg,
+    var(--brand-grad-start),
+    var(--brand-grad-end)
+  );
+  -webkit-background-clip: text;
+  background-clip: text;
+  -webkit-text-fill-color: transparent;
+}
+
+@supports not (background-clip: text) {
+  .brand-wordmark {
+    background-image: none;
+    -webkit-text-fill-color: currentColor;
+  }
+}
+
+/* One ordered stacking scale. Every fixed/absolute layer picks a value from
+   here instead of inventing one, so nothing can accidentally paint over a
+   modal. Modals also render through a portal to <body>, which keeps them out
+   of any stacking context an animated ancestor creates. */
+@layer theme {
+  :root {
+    --z-nav: 40;
+    --z-fullscreen: 100;   /* chat detail, QR scanner */
+    --z-backdrop: 1000;
+    --z-modal: 1001;
+    --z-nested-backdrop: 1100;  /* a modal opened from inside a modal */
+    --z-nested-modal: 1101;
+    --z-popover: 1200;     /* mention lists, emoji pickers */
+    --z-toast: 1300;
+  }
+}
+
+@layer base {
+  body {
+    @apply bg-bg text-fg font-sans antialiased selection:bg-accent/30;
+    min-height: 100vh;
+    -ms-overflow-style: none;
+    scrollbar-width: none;
+  }
+  body::-webkit-scrollbar {
+    display: none;
+  }
+
+  /* Visible keyboard focus everywhere; pointer clicks stay clean. */
+  :focus-visible {
+    outline: 2px solid var(--color-accent);
+    outline-offset: 2px;
+    border-radius: 4px;
+  }
+
+  input::placeholder,
+  textarea::placeholder {
+    color: var(--color-subtle);
+    opacity: 1;
+  }
+}
+
+@layer components {
+  /* Formerly backdrop-blur glass. Now a solid raised surface: no
+     per-frame filter cost, and it stays legible over any content. */
+  .glass {
+    @apply bg-surface border border-line shadow-[0_8px_32px_rgba(0,0,0,0.5)];
+  }
+
+  .glass-dark {
+    @apply bg-surface border border-line shadow-[0_8px_32px_rgba(0,0,0,0.6)];
+  }
+
+  /* Standard bordered input. Borders are visible at rest, not just on focus. */
+  .field {
+    @apply w-full bg-surface-2 border border-line-strong rounded-xl px-4 py-3
+           text-sm text-fg transition-colors duration-100
+           focus:outline-none focus:border-accent;
+  }
+
+  .field-label {
+    @apply block text-[11px] font-semibold uppercase tracking-wider text-muted mb-2;
+  }
+
+  /* Press feedback — the one micro-interaction kept on every control. */
+  .press {
+    @apply transition-transform duration-100 active:scale-[0.97];
+  }
+
+  /* Minimum 44x44 touch target for icon-only controls. */
+  .tap {
+    @apply min-w-[44px] min-h-[44px] flex items-center justify-center;
+  }
+
+  /* Enabled = full accent. Disabled = 40% + not-allowed, so the difference
+     is unmistakable before you try to click. */
+  .btn-primary {
+    @apply bg-accent text-white font-semibold rounded-full
+           transition-colors duration-100 hover:bg-accent-deep
+           active:scale-[0.97]
+           disabled:opacity-40 disabled:cursor-not-allowed
+           disabled:hover:bg-accent disabled:active:scale-100;
+  }
+
+  .btn-secondary {
+    @apply bg-surface-2 border border-line text-fg font-semibold rounded-full
+           transition-colors duration-100 hover:bg-surface-3
+           active:scale-[0.97]
+           disabled:opacity-40 disabled:cursor-not-allowed
+           disabled:hover:bg-surface-2 disabled:active:scale-100;
+  }
+
+  .btn-danger {
+    @apply bg-danger text-black font-semibold rounded-full
+           transition-opacity duration-100 hover:opacity-90
+           active:scale-[0.97]
+           disabled:opacity-40 disabled:cursor-not-allowed disabled:active:scale-100;
+  }
+
+  /* Modal shell. The panel never exceeds the viewport; its body scrolls and
+     its footer stays pinned, so action buttons can't be clipped off-screen. */
+  .modal-backdrop {
+    position: fixed;
+    inset: 0;
+    z-index: var(--z-backdrop);
+    background-color: rgb(0 0 0 / 0.85);
+  }
+
+  .modal-panel {
+    position: fixed;
+    z-index: var(--z-modal);
+    display: flex;
+    flex-direction: column;
+    max-height: 90dvh;
+    overflow: hidden;
+    @apply bg-surface border border-line shadow-[0_16px_48px_rgba(0,0,0,0.6)];
+  }
+
+  .modal-body {
+    @apply min-h-0 flex-1 overflow-y-auto overscroll-contain;
+  }
+
+  .modal-footer {
+    @apply shrink-0 border-t border-line bg-surface;
+  }
+
+  .scrollbar-hide::-webkit-scrollbar {
+    display: none;
+  }
+  .scrollbar-hide {
+    -ms-overflow-style: none;
+    scrollbar-width: none;
+  }
+}
+
+/* Honour the OS setting: drop every animation, keep the app fully usable. */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}

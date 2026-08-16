@@ -1,0 +1,16 @@
+{
+  "_comment": "Single source of truth for the legal document version. Bump `version` when you make a material change and every signed-in user will be asked to re-accept on their next visit. This file is served as a static asset, so editing it (and the .md files beside it) updates the app without a rebuild or redeploy.",
+  "version": "2026-08-16.1",
+  "lastUpdated": "2026-08-16",
+  "contactEmail": "privacy@privy.app",
+  "documents": {
+    "privacy-policy": {
+      "title": "Privacy Policy",
+      "file": "privacy-policy.md"
+    },
+    "terms-of-conditions": {
+      "title": "Terms of Conditions",
+      "file": "terms-of-conditions.md"
+    }
+  }
+}

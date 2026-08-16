@@ -1,0 +1,143 @@
+<svg viewBox="0 0 560 200" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Yappr">
+<!--
+  Yappr combined lockup — icon + wordmark, for the navbar/header.
+
+  NOTE: this comment sits INSIDE the root element on purpose. libvips sniffs
+  the format from a short window at the start of the file, so anything ahead of
+  `<svg` — a comment, even an XML declaration — makes it reject the file as
+  "unsupported image format" and breaks OG image generation. Keep `<svg` on
+  line 1.
+
+  Composed here because the brief named `yappr-combined-logo.svg` but only the
+  icon and the wordmark were supplied as separate files. Both are embedded
+  verbatim (same paths, same colours) under transforms, so this stays faithful
+  to the source art; nothing has been redrawn.
+
+  TWO DELIBERATE DIFFERENCES FROM THE ICON FILE, both for dark-theme use:
+
+  1. No background tile. The icon carries a light #EAF4FF→#D3E8FF rounded
+     square, which is right for a browser tab or a home-screen icon but would
+     put a bright panel in the middle of a dark navbar. Omitted here; the app
+     icons still have it.
+
+  2. Gradient ids are namespaced (`lk-*`). Inlining two SVGs that both define
+     `bg`/`txt` on one page makes the later definition win for both, and the
+     logo silently recolours. Prefixing avoids that.
+
+  ACCESSIBILITY NOTE: the wordmark gradient ends at #123B8C, which measures
+  ~2.0:1 against the app background (#050507) — below the 3:1 WCAG AA floor for
+  large text. The right-hand side of "yappr" is therefore hard to read on dark.
+  See the rebrand notes; a lighter end stop fixes it without changing the
+  brand's character.
+-->
+
+  <defs>
+    <linearGradient id="lk-body1" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#2E6FE6"/>
+      <stop offset="100%" stop-color="#123B8C"/>
+    </linearGradient>
+    <linearGradient id="lk-body2" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#4F9DFF"/>
+      <stop offset="100%" stop-color="#1E5FE0"/>
+    </linearGradient>
+    <linearGradient id="lk-txt" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#4F9DFF"/>
+      <stop offset="100%" stop-color="#123B8C"/>
+    </linearGradient>
+  </defs>
+
+  <!-- ── icon, 400×400 source scaled to 200×200 ───────────────────────────── -->
+  <g transform="scale(0.5)">
+    <ellipse cx="200" cy="322" rx="120" ry="14" fill="#123B8C" opacity="0.12"/>
+
+    <!-- left penguin -->
+    <g>
+      <path d="M130 330 C 90 330 70 290 72 240 C 74 190 95 140 128 130 C 161 140 182 190 184 240 C 186 290 170 330 130 330 Z" fill="url(#lk-body1)"/>
+      <path d="M130 315 C 104 315 92 285 93 245 C 94 205 108 170 130 163 C 152 170 166 205 167 245 C 168 285 156 315 130 315 Z" fill="#ffffff"/>
+      <path d="M100 210 Q75 240 88 285 Q108 275 112 235 Z" fill="#123B8C"/>
+      <path d="M112 328 L100 348 L120 340 Z" fill="#FF9F1C"/>
+      <path d="M148 328 L140 340 L160 348 Z" fill="#FF9F1C"/>
+      <circle cx="130" cy="120" r="52" fill="url(#lk-body1)"/>
+      <ellipse cx="130" cy="128" rx="34" ry="30" fill="#ffffff"/>
+      <circle cx="148" cy="112" r="10" fill="#ffffff"/>
+      <circle cx="151" cy="113" r="5" fill="#0B234F"/>
+      <circle cx="122" cy="112" r="9" fill="#ffffff"/>
+      <circle cx="124" cy="113" r="4.5" fill="#0B234F"/>
+      <path d="M152 128 Q172 132 168 148 Q152 152 144 138 Z" fill="#FF9F1C"/>
+      <circle cx="112" cy="132" r="9" fill="#FF9F9F" opacity="0.45"/>
+    </g>
+
+    <!-- right penguin -->
+    <g>
+      <path d="M270 330 C 310 330 328 292 326 244 C 324 196 305 150 274 141 C 243 150 224 196 222 244 C 220 292 234 330 270 330 Z" fill="url(#lk-body2)"/>
+      <path d="M270 316 C 296 316 307 288 306 250 C 305 212 292 178 270 172 C 248 178 235 212 234 250 C 233 288 244 316 270 316 Z" fill="#ffffff"/>
+      <path d="M300 220 Q322 248 310 288 Q292 280 288 244 Z" fill="#1E5FE0"/>
+      <path d="M254 328 L244 346 L264 340 Z" fill="#FFC94D"/>
+      <path d="M288 328 L280 340 L300 346 Z" fill="#FFC94D"/>
+      <circle cx="270" cy="132" r="46" fill="url(#lk-body2)"/>
+      <ellipse cx="270" cy="139" rx="30" ry="26" fill="#ffffff"/>
+      <circle cx="254" cy="124" r="9" fill="#ffffff"/>
+      <circle cx="251" cy="125" r="4.5" fill="#0B234F"/>
+      <circle cx="278" cy="124" r="8" fill="#ffffff"/>
+      <circle cx="276" cy="125" r="4" fill="#0B234F"/>
+      <path d="M252 140 Q234 145 240 158 Q254 160 260 148 Z" fill="#FFC94D"/>
+      <circle cx="288" cy="144" r="8" fill="#FF9F9F" opacity="0.45"/>
+    </g>
+
+    <!-- chat bubble -->
+    <g>
+      <path d="M170 70 Q170 45 200 45 L232 45 Q262 45 262 70 L262 88 Q262 108 232 108 L206 108 L188 122 L192 106 Q170 103 170 82 Z" fill="#ffffff" stroke="#1E5FE0" stroke-width="4"/>
+      <circle cx="200" cy="76" r="6" fill="#4F9DFF"/>
+      <circle cx="216" cy="76" r="6" fill="#2E6FE6"/>
+      <circle cx="232" cy="76" r="6" fill="#1E5FE0"/>
+    </g>
+  </g>
+
+  <!-- ── wordmark, 600×260 source scaled to 340×147, vertically centred ───── -->
+  <g transform="translate(220, 26) scale(0.5667)">
+    <g stroke="#4F9DFF" stroke-width="6" stroke-linecap="round" fill="none" opacity="0.8">
+      <path d="M120 55 Q128 40 120 25"/>
+      <path d="M140 60 Q152 40 140 20"/>
+      <path d="M160 55 Q168 40 160 25"/>
+    </g>
+
+    <!--
+      LIVE TEXT — READ BEFORE EDITING.
+
+      The wordmark draws its letterforms with a real <text> element in Poppins.
+      Poppins is not installed on most machines and is never available to a
+      rasteriser, nor to an <img src="*.svg">, so in those contexts the glyphs
+      fall back to Segoe UI or Arial and render roughly 160 units narrower than
+      the design assumes.
+
+      Consequences, both verified by rendering:
+        • The speech-bubble tail that grew out of the final "r" sat at a fixed
+          x=545 and was left floating in empty space. It has been removed here
+          rather than shipped detached. `textLength` does not rescue it —
+          librsvg ignores that attribute.
+        • The letterforms themselves are a substitute font, so any raster of
+          this file is off-brand no matter what.
+
+      THE FIX is to convert the wordmark text to outlines in the design tool and
+      re-export. Once that lands, restore the tail:
+          <path d="M 545 178 Q 565 195 555 220 Q 585 208 578 178 Z" fill="url(#lk-txt)"/>
+
+      In the app itself this is sidestepped entirely: the navbar renders the
+      wordmark as real HTML text, so it uses the page's own font stack and is
+      selectable and scalable. See src/components/Logo.tsx.
+    -->
+    <text x="40" y="175"
+          font-family="Poppins, 'Segoe UI', Arial, sans-serif"
+          font-weight="800"
+          font-size="130"
+          letter-spacing="-2"
+          fill="url(#lk-txt)">yappr</text>
+
+    <path d="M 218 205 Q 300 235 385 205" stroke="#FF9F1C" stroke-width="8" stroke-linecap="round" fill="none"/>
+
+    <g>
+      <rect x="55" y="28" width="26" height="18" rx="9" fill="#FF9F1C"/>
+      <path d="M62 46 L58 54 L70 46 Z" fill="#FF9F1C"/>
+    </g>
+  </g>
+</svg>

@@ -1,0 +1,14 @@
+{
+  "name": "yappr",
+  "description": "A secure, discrete social network with end-to-end group dynamics and identity bridging.",
+  "requestFramePermissions": [
+    "camera",
+    "microphone"
+  ],
+  "majorCapabilities": [
+    "real-time-group-chat",
+    "identity-qr-bridging",
+    "encrypted-asset-sharing",
+    "status-presence"
+  ]
+}

@@ -1,0 +1,40 @@
+<svg viewBox="0 0 600 260" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <linearGradient id="txt" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#4F9DFF"/>
+      <stop offset="100%" stop-color="#123B8C"/>
+    </linearGradient>
+  </defs>
+
+  <!-- sound wave accents above the wordmark, like chatter -->
+  <g stroke="#4F9DFF" stroke-width="6" stroke-linecap="round" fill="none" opacity="0.8">
+    <path d="M120 55 Q128 40 120 25"/>
+    <path d="M140 60 Q152 40 140 20"/>
+    <path d="M160 55 Q168 40 160 25"/>
+  </g>
+
+  <!-- wordmark: custom letterforms, rounded, tight, playful -->
+  <text x="40" y="175"
+        font-family="Poppins, 'Segoe UI', Arial, sans-serif"
+        font-weight="800"
+        font-size="130"
+        letter-spacing="-2"
+        fill="url(#txt)">yappr</text>
+
+  <!-- the two P's bridged by a single continuous underline, like a shared thread of conversation -->
+  <path d="M 218 205 
+           Q 300 235 385 205"
+        stroke="#FF9F1C" stroke-width="8" stroke-linecap="round" fill="none"/>
+
+  <!-- speech-bubble tail growing out of the final r, turning the whole wordmark into a bubble -->
+  <path d="M 545 178 
+           Q 565 195 555 220 
+           Q 585 208 578 178 Z"
+        fill="url(#txt)"/>
+
+  <!-- dot over the y replaced with a tiny chat bubble -->
+  <g>
+    <rect x="55" y="28" width="26" height="18" rx="9" fill="#FF9F1C"/>
+    <path d="M62 46 L58 54 L70 46 Z" fill="#FF9F1C"/>
+  </g>
+</svg>

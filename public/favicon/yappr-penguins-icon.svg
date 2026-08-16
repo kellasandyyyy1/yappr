@@ -1,0 +1,110 @@
+<svg viewBox="0 0 400 400" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <linearGradient id="bg" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#EAF4FF"/>
+      <stop offset="100%" stop-color="#D3E8FF"/>
+    </linearGradient>
+    <linearGradient id="body1" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#2E6FE6"/>
+      <stop offset="100%" stop-color="#123B8C"/>
+    </linearGradient>
+    <linearGradient id="body2" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#4F9DFF"/>
+      <stop offset="100%" stop-color="#1E5FE0"/>
+    </linearGradient>
+  </defs>
+
+  <!-- background rounded square -->
+  <rect x="10" y="10" width="380" height="380" rx="86" fill="url(#bg)"/>
+
+  <!-- ground shadow -->
+  <ellipse cx="200" cy="322" rx="120" ry="14" fill="#123B8C" opacity="0.12"/>
+
+  <!-- LEFT PENGUIN (facing right) -->
+  <g>
+    <!-- body -->
+    <path d="M130 330
+             C 90 330 70 290 72 240
+             C 74 190 95 140 128 130
+             C 161 140 182 190 184 240
+             C 186 290 170 330 130 330 Z"
+          fill="url(#body1)"/>
+    <!-- belly -->
+    <path d="M130 315
+             C 104 315 92 285 93 245
+             C 94 205 108 170 130 163
+             C 152 170 166 205 167 245
+             C 168 285 156 315 130 315 Z"
+          fill="#ffffff"/>
+    <!-- wing -->
+    <path d="M100 210 Q75 240 88 285 Q108 275 112 235 Z" fill="#123B8C"/>
+    <!-- feet -->
+    <path d="M112 328 L100 348 L120 340 Z" fill="#FF9F1C"/>
+    <path d="M148 328 L140 340 L160 348 Z" fill="#FF9F1C"/>
+    <!-- head -->
+    <circle cx="130" cy="120" r="52" fill="url(#body1)"/>
+    <ellipse cx="130" cy="128" rx="34" ry="30" fill="#ffffff"/>
+    <!-- eyes looking right toward other penguin -->
+    <circle cx="148" cy="112" r="10" fill="#ffffff"/>
+    <circle cx="151" cy="113" r="5" fill="#0B234F"/>
+    <circle cx="122" cy="112" r="9" fill="#ffffff"/>
+    <circle cx="124" cy="113" r="4.5" fill="#0B234F"/>
+    <!-- beak open, mid-word -->
+    <path d="M152 128 Q172 132 168 148 Q152 152 144 138 Z" fill="#FF9F1C"/>
+    <!-- cheek blush -->
+    <circle cx="112" cy="132" r="9" fill="#FF9F9F" opacity="0.45"/>
+  </g>
+
+  <!-- RIGHT PENGUIN (facing left, slightly smaller/back) -->
+  <g>
+    <!-- body -->
+    <path d="M270 330
+             C 310 330 328 292 326 244
+             C 324 196 305 150 274 141
+             C 243 150 224 196 222 244
+             C 220 292 234 330 270 330 Z"
+          fill="url(#body2)"/>
+    <!-- belly -->
+    <path d="M270 316
+             C 296 316 307 288 306 250
+             C 305 212 292 178 270 172
+             C 248 178 235 212 234 250
+             C 233 288 244 316 270 316 Z"
+          fill="#ffffff"/>
+    <!-- wing -->
+    <path d="M300 220 Q322 248 310 288 Q292 280 288 244 Z" fill="#1E5FE0"/>
+    <!-- feet -->
+    <path d="M254 328 L244 346 L264 340 Z" fill="#FFC94D"/>
+    <path d="M288 328 L280 340 L300 346 Z" fill="#FFC94D"/>
+    <!-- head -->
+    <circle cx="270" cy="132" r="46" fill="url(#body2)"/>
+    <ellipse cx="270" cy="139" rx="30" ry="26" fill="#ffffff"/>
+    <!-- eyes looking left -->
+    <circle cx="254" cy="124" r="9" fill="#ffffff"/>
+    <circle cx="251" cy="125" r="4.5" fill="#0B234F"/>
+    <circle cx="278" cy="124" r="8" fill="#ffffff"/>
+    <circle cx="276" cy="125" r="4" fill="#0B234F"/>
+    <!-- beak, listening/smiling -->
+    <path d="M252 140 Q234 145 240 158 Q254 160 260 148 Z" fill="#FFC94D"/>
+    <!-- cheek blush -->
+    <circle cx="288" cy="144" r="8" fill="#FF9F9F" opacity="0.45"/>
+  </g>
+
+  <!-- chat bubble between them -->
+  <g>
+    <path d="M170 70 
+             Q170 45 200 45 
+             L232 45 
+             Q262 45 262 70 
+             L262 88 
+             Q262 108 232 108 
+             L206 108 
+             L188 122 
+             L192 106 
+             Q170 103 170 82 Z"
+          fill="#ffffff" stroke="#1E5FE0" stroke-width="4"/>
+    <circle cx="200" cy="76" r="6" fill="#4F9DFF"/>
+    <circle cx="216" cy="76" r="6" fill="#2E6FE6"/>
+    <circle cx="232" cy="76" r="6" fill="#1E5FE0"/>
+  </g>
+</svg>

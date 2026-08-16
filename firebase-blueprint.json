@@ -1,0 +1,501 @@
+{
+  "entities": {
+    "User": {
+      "title": "User Profile",
+      "description": "User account information and profile details.",
+      "type": "object",
+      "properties": {
+        "uid": {
+          "type": "string",
+          "description": "Firebase Auth UID"
+        },
+        "username": {
+          "type": "string",
+          "description": "Unique handle"
+        },
+        "displayName": {
+          "type": "string",
+          "description": "Public name"
+        },
+        "email": {
+          "type": "string",
+          "description": "User email (private)"
+        },
+        "photoURL": {
+          "type": "string",
+          "description": "Profile picture URL"
+        },
+        "bio": {
+          "type": "string",
+          "description": "Short user bio"
+        },
+        "themeSong": {
+          "type": "object",
+          "properties": {
+            "youtubeId": {
+              "type": "string"
+            },
+            "title": {
+              "type": "string"
+            },
+            "artist": {
+              "type": "string"
+            },
+            "coverUrl": {
+              "type": "string"
+            },
+            "startTime": {
+              "type": "number"
+            }
+          }
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "termsVersion": {
+          "type": "string",
+          "description": "Version of the legal documents this user accepted"
+        },
+        "termsAcceptedAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Server timestamp of legal acceptance (compliance record)"
+        }
+      },
+      "required": [
+        "uid",
+        "username",
+        "email",
+        "createdAt"
+      ]
+    },
+    "Post": {
+      "title": "Social Post",
+      "description": "A post containing text and/or images.",
+      "type": "object",
+      "properties": {
+        "userId": {
+          "type": "string",
+          "description": "ID of the creator"
+        },
+        "content": {
+          "type": "string",
+          "description": "Text content"
+        },
+        "imageUrl": {
+          "type": "string",
+          "description": "Attached image URL"
+        },
+        "imageUrls": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "voiceUrl": {
+          "type": "string"
+        },
+        "type": {
+          "type": "string",
+          "enum": [
+            "text",
+            "image",
+            "voice"
+          ]
+        },
+        "song": {
+          "type": "object",
+          "properties": {
+            "youtubeId": {
+              "type": "string"
+            },
+            "title": {
+              "type": "string"
+            },
+            "artist": {
+              "type": "string"
+            },
+            "coverUrl": {
+              "type": "string"
+            },
+            "startTime": {
+              "type": "number"
+            }
+          }
+        },
+        "likesCount": {
+          "type": "number",
+          "description": "Total likes"
+        },
+        "commentsCount": {
+          "type": "number",
+          "description": "Total comments"
+        },
+        "reactions": {
+          "type": "object"
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "visibility": {
+          "type": "string",
+          "enum": [
+            "public",
+            "followers",
+            "private"
+          ],
+          "description": "Audience for this post; absent means public"
+        }
+      },
+      "required": [
+        "userId",
+        "content",
+        "createdAt"
+      ]
+    },
+    "MusicHistory": {
+      "title": "Music History",
+      "description": "Records of songs a user has used or listened to.",
+      "type": "object",
+      "properties": {
+        "userId": {
+          "type": "string"
+        },
+        "youtubeId": {
+          "type": "string"
+        },
+        "title": {
+          "type": "string"
+        },
+        "artist": {
+          "type": "string"
+        },
+        "coverUrl": {
+          "type": "string"
+        },
+        "startTime": {
+          "type": "number"
+        },
+        "type": {
+          "type": "string",
+          "enum": [
+            "used",
+            "listened"
+          ]
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time"
+        }
+      },
+      "required": [
+        "userId",
+        "youtubeId",
+        "title",
+        "createdAt"
+      ]
+    },
+    "Comment": {
+      "title": "Post Comment",
+      "description": "A comment on a specific post.",
+      "type": "object",
+      "properties": {
+        "postId": {
+          "type": "string"
+        },
+        "userId": {
+          "type": "string"
+        },
+        "content": {
+          "type": "string"
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "type": {
+          "type": "string",
+          "enum": [
+            "text",
+            "image",
+            "voice"
+          ]
+        },
+        "imageUrl": {
+          "type": "string"
+        },
+        "voiceUrl": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "postId",
+        "userId",
+        "content",
+        "createdAt"
+      ]
+    },
+    "Message": {
+      "title": "Direct Message",
+      "description": "A real-time message between two users.",
+      "type": "object",
+      "properties": {
+        "senderId": {
+          "type": "string"
+        },
+        "receiverId": {
+          "type": "string"
+        },
+        "content": {
+          "type": "string"
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "isRead": {
+          "type": "boolean"
+        },
+        "type": {
+          "type": "string",
+          "enum": [
+            "text",
+            "image",
+            "voice"
+          ]
+        },
+        "imageUrl": {
+          "type": "string"
+        },
+        "voiceUrl": {
+          "type": "string"
+        },
+        "postId": {
+          "type": "string",
+          "description": "Reference to a shared post"
+        },
+        "deliveredTo": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "description": "UIDs whose client acknowledged receipt (Delivered status)"
+        }
+      },
+      "required": [
+        "senderId",
+        "receiverId",
+        "content",
+        "createdAt",
+        "isRead",
+        "type"
+      ]
+    },
+    "Notification": {
+      "title": "User Notification",
+      "description": "Alert for interactions or messages.",
+      "type": "object",
+      "properties": {
+        "toUserId": {
+          "type": "string",
+          "description": "Recipient"
+        },
+        "type": {
+          "type": "string",
+          "enum": [
+            "like",
+            "comment",
+            "message",
+            "follow",
+            "mention"
+          ]
+        },
+        "fromUserId": {
+          "type": "string",
+          "description": "Sender"
+        },
+        "referenceId": {
+          "type": "string",
+          "description": "ID of related post/message"
+        },
+        "isRead": {
+          "type": "boolean"
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time"
+        }
+      },
+      "required": [
+        "toUserId",
+        "type",
+        "fromUserId",
+        "createdAt",
+        "isRead"
+      ]
+    },
+    "Follow": {
+      "title": "User Follow Relationship",
+      "description": "Represents a follow relationship between two users.",
+      "type": "object",
+      "properties": {
+        "followerId": {
+          "type": "string",
+          "description": "User who follows"
+        },
+        "followingId": {
+          "type": "string",
+          "description": "User being followed"
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time"
+        }
+      },
+      "required": [
+        "followerId",
+        "followingId",
+        "createdAt"
+      ]
+    },
+    "Like": {
+      "title": "Post Like",
+      "description": "A like on a specific post by a user.",
+      "type": "object",
+      "properties": {
+        "postId": {
+          "type": "string"
+        },
+        "userId": {
+          "type": "string"
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time"
+        }
+      },
+      "required": [
+        "postId",
+        "userId",
+        "createdAt"
+      ]
+    },
+    "PushSubscription": {
+      "title": "Push Subscription",
+      "description": "Browser push subscription for background notifications.",
+      "type": "object",
+      "properties": {
+        "userId": {
+          "type": "string"
+        },
+        "endpoint": {
+          "type": "string"
+        },
+        "keys": {
+          "type": "object",
+          "properties": {
+            "p256dh": {
+              "type": "string"
+            },
+            "auth": {
+              "type": "string"
+            }
+          }
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time"
+        }
+      },
+      "required": [
+        "userId",
+        "endpoint",
+        "keys",
+        "createdAt"
+      ]
+    },
+    "SecurityEvent": {
+      "title": "Security Event",
+      "description": "Append-only record of sign-ins, password changes and 2FA changes.",
+      "type": "object",
+      "properties": {
+        "type": {
+          "type": "string",
+          "enum": [
+            "sign_in",
+            "sign_in_new_device",
+            "password_changed",
+            "password_reset_requested",
+            "mfa_enrolled",
+            "mfa_removed"
+          ]
+        },
+        "userId": {
+          "type": "string"
+        },
+        "deviceId": {
+          "type": "string",
+          "description": "Random per-browser id, not a fingerprint"
+        },
+        "deviceLabel": {
+          "type": "string",
+          "description": "Coarse label e.g. \"Chrome on Windows\""
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time"
+        }
+      },
+      "required": [
+        "type",
+        "userId",
+        "deviceId",
+        "createdAt"
+      ]
+    }
+  },
+  "firestore": {
+    "/musicHistory/{historyId}": {
+      "schema": "MusicHistory",
+      "description": "User music history (used and listened)"
+    },
+    "/users/{userId}": {
+      "schema": "User",
+      "description": "User profile documents"
+    },
+    "/follows/{followId}": {
+      "schema": "Follow",
+      "description": "User follow relationships"
+    },
+    "/posts/{postId}": {
+      "schema": "Post",
+      "description": "Main feed posts"
+    },
+    "/posts/{postId}/comments/{commentId}": {
+      "schema": "Comment",
+      "description": "Comments on posts"
+    },
+    "/likes/{likeId}": {
+      "schema": "Like",
+      "description": "Post likes"
+    },
+    "/notifications/{notifId}": {
+      "schema": "Notification",
+      "description": "User notifications"
+    },
+    "/subscriptions/{subId}": {
+      "schema": "PushSubscription",
+      "description": "Push notification subscriptions"
+    },
+    "/chats/{chatId}/messages/{messageId}": {
+      "schema": "Message",
+      "description": "Messages in individual chat rooms"
+    },
+    "/users/{userId}/securityEvents/{eventId}": {
+      "schema": "SecurityEvent",
+      "description": "Per-user security audit log (append-only, owner-read)"
+    }
+  }
+}

@@ -1,0 +1,31 @@
+node_modules/
+build/
+dist/
+coverage/
+.DS_Store
+*.log
+
+# Secrets. `.env*` is deliberately broad — it catches .env.local, .env.production
+# and anything else added later, which is safer than allow-listing.
+.env*
+!.env.example
+
+# vite-plugin-pwa writes a generated service worker here when devOptions is on.
+dev-dist/
+
+# Vercel CLI local state (contains the linked project + org id).
+.vercel
+
+# Supabase CLI local state. Not secret — the pooler URL carries no password —
+# but it is per-developer machine state and pins whoever pushed last as the
+# linked project for everyone else.
+supabase/.temp/
+
+# Local agent tooling. Vendored skill docs and lockfiles, not application code.
+.claude/
+.agents/
+skills-lock.json
+
+# Migration working data. The export contains real user records pulled out of
+# Firestore, so it must never reach the repo.
+migration-data/
