@@ -393,13 +393,18 @@ export function ProfileView({ user: currentUser, profileUserId, onLogout, onBack
 
   if (!profileUser) {
     return (
-      <div className="flex flex-col gap-6">
-        <div className="flex flex-col items-center gap-4">
-          <Skeleton className="h-36 w-36 rounded-full sm:h-40 sm:w-40" />
-          <Skeleton className="h-6 w-40" />
-          <Skeleton className="h-4 w-24" />
-          <Skeleton className="h-20 w-full rounded-2xl" />
+      // Mirrors the real layout exactly — horizontal identity row, 80px
+      // avatar, single-line stats. It previously drew the old 160px centred
+      // avatar, so the page visibly jumped the moment data arrived.
+      <div className="flex flex-col gap-4">
+        <div className="flex items-center gap-4">
+          <Skeleton className="h-20 w-20 shrink-0 rounded-full" />
+          <div className="min-w-0 flex-1 space-y-2">
+            <Skeleton className="h-5 w-40" />
+            <Skeleton className="h-3.5 w-24" />
+          </div>
         </div>
+        <Skeleton className="h-10 w-full rounded-xl" />
         <GridSkeleton count={6} />
       </div>
     );
@@ -408,7 +413,9 @@ export function ProfileView({ user: currentUser, profileUserId, onLogout, onBack
   const hasAvatar = !!(profileUser.photoURL && profileUser.photoURL.trim() !== '');
 
   return (
-    <div className="flex flex-col gap-6">
+    // gap-6 → gap-4 between sections. With the identity block now horizontal,
+    // 24px gutters left the page reading as three widely separated islands.
+    <div className="flex flex-col gap-4">
       <header className="flex min-h-[44px] items-center justify-between gap-3">
         <div className="flex min-w-0 items-center gap-1">
           {onBack && (
@@ -472,83 +479,99 @@ export function ProfileView({ user: currentUser, profileUserId, onLogout, onBack
         </div>
       </header>
 
-      <div className="flex flex-col items-center gap-5">
-        {/* Avatar. When empty on your own profile it becomes an explicit,
-            always-visible "Add photo" target rather than a hover-only badge
-            that touch users can never discover. */}
-        <div className="relative">
-          {isOwnProfile && !hasAvatar ? (
-            <button
-              onClick={() => setIsEditing(true)}
-              className="press flex h-36 w-36 flex-col items-center justify-center gap-2 rounded-full border-2 border-dashed border-line-strong bg-surface-2 text-muted transition-colors duration-100 hover:border-accent hover:text-accent sm:h-40 sm:w-40"
-            >
-              <Camera size={28} />
-              <span className="text-sm font-semibold">Add photo</span>
-            </button>
-          ) : (
-            <>
-              <Avatar user={profileUser} size="4xl" />
-              {isOwnProfile && (
-                <button
-                  onClick={() => setIsEditing(true)}
-                  aria-label="Change profile photo"
-                  title="Change photo"
-                  className="absolute bottom-1 right-1 flex h-11 w-11 items-center justify-center rounded-full border-4 border-bg bg-accent text-white transition-transform duration-100 active:scale-95"
-                >
-                  <Camera size={18} />
-                </button>
-              )}
-            </>
-          )}
-        </div>
+      {/* Identity block.
+          Was a centred column: a 160px avatar, then name, then stats, each
+          separated by 20px. On a profile with no bio and no posts that is most
+          of a screen for four short facts.
 
-        <div className="px-4 text-center">
-          <h2 className="text-2xl font-bold tracking-tight text-fg">{profileUser.displayName}</h2>
-          <p className="mt-1 text-sm font-medium text-accent">@{profileUser.username}</p>
-          {profileUser.bio && (
-            <p className="mx-auto mt-3 max-w-[360px] text-sm leading-relaxed text-muted">
-              {profileUser.bio}
-            </p>
-          )}
+          Now a horizontal row — avatar beside the name — which recovers the
+          avatar's full height and reads as a header rather than a hero. */}
+      <div className="flex flex-col gap-3">
+        <div className="flex items-center gap-4">
+          <div className="relative shrink-0">
+            {isOwnProfile && !hasAvatar ? (
+              /* Empty state is now the dashed ring and a single glyph. The
+                 camera icon plus an "Add photo" caption filled the circle and
+                 read as content rather than as a placeholder. */
+              <button
+                onClick={() => setIsEditing(true)}
+                aria-label="Add a profile photo"
+                title="Add photo"
+                className="press flex h-20 w-20 items-center justify-center rounded-full border-2 border-dashed border-line-strong bg-surface-2 text-subtle transition-colors duration-100 hover:border-accent hover:text-accent"
+              >
+                <Camera size={22} />
+              </button>
+            ) : (
+              <>
+                <Avatar user={profileUser} size="2xl" />
+                {isOwnProfile && (
+                  <button
+                    onClick={() => setIsEditing(true)}
+                    aria-label="Change profile photo"
+                    title="Change photo"
+                    className="absolute -bottom-0.5 -right-0.5 flex h-7 w-7 items-center justify-center rounded-full border-2 border-bg bg-accent text-white transition-transform duration-100 active:scale-95"
+                  >
+                    <Camera size={13} />
+                  </button>
+                )}
+              </>
+            )}
+          </div>
 
-          {profileUser.themeSong && (
-            <div className="mt-5 flex justify-center">
-              <ThemeSongCard
-                song={profileUser.themeSong}
-                onPlay={() => recordListenedMusic(profileUser.themeSong!)}
-              />
-            </div>
-          )}
+          <div className="min-w-0 flex-1">
+            <h2 className="truncate text-xl font-bold tracking-tight text-fg">
+              {profileUser.displayName}
+            </h2>
+            <p className="truncate text-sm font-medium text-accent">@{profileUser.username}</p>
+          </div>
 
           {isOwnProfile && (
             <button
               onClick={() => setIsEditing(true)}
-              className="btn-secondary mt-5 px-8 py-2.5 text-sm"
+              className="btn-secondary shrink-0 px-4 py-1.5 text-xs"
             >
-              Edit profile
+              Edit
             </button>
           )}
         </div>
 
-        <div className="grid w-full grid-cols-3 divide-x divide-line rounded-2xl border border-line bg-surface p-4">
-          <div className="flex flex-col items-center">
-            <span className="text-lg font-bold text-fg">{userPosts.length}</span>
-            <span className="mt-0.5 text-sm text-muted">Posts</span>
-          </div>
-          <button
-            onClick={() => setShowUsersModal({ title: 'Followers', type: 'followers' })}
-            className="press flex flex-col items-center"
-          >
-            <span className="text-lg font-bold text-fg">{fanCount}</span>
-            <span className="mt-0.5 text-sm text-muted">Followers</span>
-          </button>
-          <button
-            onClick={() => setShowUsersModal({ title: 'Following', type: 'following' })}
-            className="press flex flex-col items-center"
-          >
-            <span className="text-lg font-bold text-fg">{circleCount}</span>
-            <span className="mt-0.5 text-sm text-muted">Following</span>
-          </button>
+        {profileUser.bio && (
+          <p className="text-sm leading-relaxed text-muted">{profileUser.bio}</p>
+        )}
+
+        {profileUser.themeSong && (
+          <ThemeSongCard
+            song={profileUser.themeSong}
+            onPlay={() => recordListenedMusic(profileUser.themeSong!)}
+          />
+        )}
+
+        {/* Stats: number and label on one baseline instead of stacked, so the
+            row is a single line of text rather than a 72px card. */}
+        <div className="grid grid-cols-3 divide-x divide-line rounded-xl border border-line bg-surface py-2">
+          {([
+            ['Posts', userPosts.length, null],
+            ['Followers', fanCount, { title: 'Followers', type: 'followers' as const }],
+            ['Following', circleCount, { title: 'Following', type: 'following' as const }],
+          ] as const).map(([label, value, modal]) => {
+            const inner = (
+              <span className="flex items-baseline justify-center gap-1.5">
+                <span className="text-base font-bold leading-none text-fg">{value}</span>
+                <span className="text-xs leading-none text-muted">{label}</span>
+              </span>
+            );
+            return modal ? (
+              <button
+                key={label}
+                onClick={() => setShowUsersModal(modal)}
+                className="press flex items-center justify-center"
+              >
+                {inner}
+              </button>
+            ) : (
+              <div key={label} className="flex items-center justify-center">{inner}</div>
+            );
+          })}
         </div>
       </div>
 
@@ -692,47 +715,62 @@ export function ProfileView({ user: currentUser, profileUserId, onLogout, onBack
         )}
       </AnimatePresence>
 
-      {/* Segmented control — two equal pills on a track, reading clearly as a
-          choice rather than as an empty text field. */}
-      <div
-        role="tablist"
-        aria-label="Post layout"
-        className="flex gap-1 rounded-full border border-line bg-surface p-1"
-      >
-        {([
-          { id: 'grid', label: 'Grid', icon: Grid },
-          { id: 'list', label: 'List', icon: List },
-        ] as const).map((option) => {
-          const Icon = option.icon;
-          const isActive = viewMode === option.id;
-          return (
-            <button
-              key={option.id}
-              role="tab"
-              aria-selected={isActive}
-              onClick={() => setViewMode(option.id)}
-              className={cn(
-                'flex flex-1 items-center justify-center gap-2 rounded-full py-2.5',
-                'text-sm font-semibold transition-colors duration-100',
-                isActive ? 'bg-accent/15 text-accent' : 'text-muted hover:text-fg'
-              )}
-            >
-              <Icon size={17} />
-              {option.label}
-            </button>
-          );
-        })}
+      {/* Posts header. The toggle was `flex-1` on each button, stretching a
+          two-word control to the full column width with a large dead zone
+          inside each half. It is now sized to its content and paired with a
+          count, which gives the row a reason to span the width. */}
+      <div className="flex items-center justify-between gap-3">
+        <h3 className="text-sm font-semibold text-fg">
+          Posts
+          {userPosts.length > 0 && (
+            <span className="ml-1.5 text-xs font-normal text-muted">{userPosts.length}</span>
+          )}
+        </h3>
+
+        <div
+          role="tablist"
+          aria-label="Post layout"
+          className="flex shrink-0 gap-0.5 rounded-lg border border-line bg-surface p-0.5"
+        >
+          {([
+            { id: 'grid', label: 'Grid', icon: Grid },
+            { id: 'list', label: 'List', icon: List },
+          ] as const).map((option) => {
+            const Icon = option.icon;
+            const isActive = viewMode === option.id;
+            return (
+              <button
+                key={option.id}
+                role="tab"
+                aria-selected={isActive}
+                onClick={() => setViewMode(option.id)}
+                // Label hidden below sm but kept for screen readers — an
+                // icon-only tab with no accessible name is unusable.
+                className={cn(
+                  'flex items-center gap-1.5 rounded-[6px] px-2.5 py-1',
+                  'text-xs font-semibold transition-colors duration-100',
+                  isActive ? 'bg-accent/15 text-accent' : 'text-muted hover:text-fg'
+                )}
+              >
+                <Icon size={14} />
+                <span className="sr-only sm:not-sr-only">{option.label}</span>
+              </button>
+            );
+          })}
+        </div>
       </div>
 
       {postsLoading ? (
         <GridSkeleton count={6} />
       ) : userPosts.length === 0 ? (
-        <div className="flex flex-col items-center gap-3 py-16 text-center">
-          <div className="flex h-14 w-14 items-center justify-center rounded-full bg-surface-2 text-muted">
-            <Grid size={24} />
+        /* py-16 → py-8. The copy stays; it was only the surrounding void that
+           made the page look like it had stopped rendering. */
+        <div className="flex flex-col items-center gap-2 py-8 text-center">
+          <div className="flex h-11 w-11 items-center justify-center rounded-full bg-surface-2 text-muted">
+            <Grid size={19} />
           </div>
-          <p className="text-base font-semibold text-fg">No posts yet</p>
-          <p className="max-w-xs text-sm leading-relaxed text-muted">
+          <p className="text-sm font-semibold text-fg">No posts yet</p>
+          <p className="max-w-[260px] text-xs leading-relaxed text-muted">
             {isOwnProfile
               ? 'Posts you write will appear here.'
               : `${profileUser.displayName} hasn't posted anything yet.`}

@@ -897,19 +897,36 @@ export function ChatView({ user, onProfileClick, onUserClick, onChatOpenChange, 
         </div>
 
         <div className="flex-1 relative overflow-hidden flex flex-col">
-          {/* One vertical rhythm: 24px between message groups, and the date
-              divider carries the same 24px above and below via `py-3` on a
-              24px-gap stack. No more variable gaps around dividers. */}
-          <div className="flex-1 space-y-6 overflow-y-auto pr-1 pt-4 scrollbar-hide">
+          {/* Compact rhythm: 12px between date groups, 2px between consecutive
+              bubbles. Was 24px everywhere, which turned a short exchange into a
+              mostly-empty column. */}
+          <div className="flex-1 space-y-3 overflow-y-auto pr-1 pt-2 scrollbar-hide">
             {messageCursor && (
               <div className="flex justify-center">
                 <button
                   onClick={loadOlderMessages}
                   disabled={loadingOlder}
-                  className="btn-secondary px-4 py-2 text-sm"
+                  className="btn-secondary px-3 py-1.5 text-xs"
                 >
                   {loadingOlder ? 'Loading…' : 'Load older messages'}
                 </button>
+              </div>
+            )}
+
+            {/* An open conversation with no history rendered as a black void —
+                no spinner, no message, nothing to distinguish "empty" from
+                "broken". Verified against the database: the conversation really
+                did have zero messages, so this is the correct state, it simply
+                had no representation. */}
+            {messages.length === 0 && !messageCursor && (
+              <div className="flex h-full flex-col items-center justify-center gap-2 px-6 py-10 text-center">
+                <div className="flex h-11 w-11 items-center justify-center rounded-full bg-surface-2 text-muted">
+                  <MessageSquare size={20} />
+                </div>
+                <p className="text-sm font-semibold text-fg">No messages yet</p>
+                <p className="max-w-[240px] text-xs leading-relaxed text-muted">
+                  Say hello to {selectedUser?.displayName ?? 'them'} — your messages will appear here.
+                </p>
               </div>
             )}
 
@@ -922,10 +939,10 @@ export function ChatView({ user, onProfileClick, onUserClick, onChatOpenChange, 
                 return groups;
               }, {})
             ).map(([dateStr, dateMessages]) => (
-              <div key={dateStr} className="space-y-6">
-                <div className="flex items-center gap-3">
+              <div key={dateStr} className="space-y-0.5">
+                <div className="flex items-center gap-3 pb-2 pt-1">
                   <div className="h-px flex-1 bg-line" />
-                  <span className="whitespace-nowrap text-sm font-medium text-muted">
+                  <span className="whitespace-nowrap text-[11px] font-medium uppercase tracking-wide text-subtle">
                     {(() => {
                       const date = new Date(dateStr);
                       const today = new Date();
@@ -953,30 +970,38 @@ export function ChatView({ user, onProfileClick, onUserClick, onChatOpenChange, 
                       className={cn(
                         // min-w-0 is what stops a long shared-post preview or an
                         // unbroken URL from pushing the bubble past the viewport.
-                        "flex min-w-0 max-w-[85%] flex-col",
+                        //
+                        // group/msg lives here, not on the bubble row: the
+                        // timestamp is a SIBLING of that row, so a group scoped
+                        // to the row would never match it and the metadata
+                        // would stay invisible on hover.
+                        "group/msg flex min-w-0 max-w-[85%] flex-col",
                         isMe ? "ml-auto items-end" : "mr-auto items-start"
                       )}
                     >
                       {!isMe && isGroup && (
-                        <span className="mb-1 ml-8 text-sm font-medium text-muted">
+                        <span className="mb-0.5 ml-7 text-xs font-medium text-muted">
                           {sender?.displayName || 'Unknown user'}
                         </span>
                       )}
 
                       <div className={cn(
-                        "group/msg relative flex min-w-0 max-w-full items-end gap-2",
+                        "relative flex min-w-0 max-w-full items-end gap-1.5",
                         isMe ? "flex-row-reverse" : "flex-row"
                       )}>
                         {!isMe && <Avatar user={sender} size="xs" />}
 
                         <div className="relative min-w-0 max-w-full">
+                          {/* leading-snug rather than leading-relaxed: at this
+                              bubble width relaxed adds a visible gap between
+                              every line and roughly a third to the height. */}
                           <div className={cn(
-                            "relative overflow-hidden rounded-2xl text-sm leading-relaxed",
+                            "relative overflow-hidden rounded-2xl text-sm leading-snug",
                             "min-w-0 max-w-full break-words [overflow-wrap:anywhere]",
                             isMe
                               ? "rounded-br-md bg-accent text-white"
                               : "rounded-bl-md border border-line bg-surface-2 text-fg",
-                            msg.type === 'image' ? "p-1.5" : "px-3.5 py-2.5"
+                            msg.type === 'image' ? "p-1" : "px-3 py-1.5"
                           )}>
                             {msg.replyToId && (
                               <div className={cn(
@@ -1040,7 +1065,7 @@ export function ChatView({ user, onProfileClick, onUserClick, onChatOpenChange, 
                       {/* Reaction chips sit in normal flow directly under the
                           bubble, so they never stack awkwardly on short ones. */}
                       {hasReactions && (
-                        <div className={cn("mt-1 flex", isMe ? "mr-0 justify-end" : "ml-8 justify-start")}>
+                        <div className={cn("mt-0.5 flex", isMe ? "mr-0 justify-end" : "ml-7 justify-start")}>
                           <EmojiReactions
                             reactions={msg.reactions}
                             onReact={(emoji) => handleReactMessage(msg.id, emoji)}
@@ -1051,8 +1076,23 @@ export function ChatView({ user, onProfileClick, onUserClick, onChatOpenChange, 
                         </div>
                       )}
 
-                      <div className={cn("mt-1 flex items-center gap-1.5", isMe ? "mr-0 justify-end" : "ml-8 justify-start")}>
-                        <span className="text-xs text-muted">
+                      {/* Metadata row.
+                          Previously every message carried a full-size timestamp
+                          AND a spelled-out delivery status, so a one-word reply
+                          was mostly chrome. Now: 10px subtle text, revealed on
+                          hover or focus, and the status collapses to its icon
+                          with the label kept in the tooltip and for screen
+                          readers. `h-3.5` reserves the row so bubbles do not
+                          shift on hover. */}
+                      <div
+                        className={cn(
+                          "mt-0.5 flex h-3.5 items-center gap-1 text-[10px] leading-none",
+                          "opacity-0 transition-opacity duration-100",
+                          "group-hover/msg:opacity-100 group-focus-within/msg:opacity-100",
+                          isMe ? "mr-0 justify-end" : "ml-7 justify-start"
+                        )}
+                      >
+                        <span className="text-subtle">
                           {msg.createdAt
                             ? new Date((msg.createdAt as any).toDate ? (msg.createdAt as any).toDate() : msg.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
                             : 'Sending…'}
@@ -1060,13 +1100,13 @@ export function ChatView({ user, onProfileClick, onUserClick, onChatOpenChange, 
                         {isMe && status && (
                           <span
                             className={cn(
-                              "flex items-center gap-1 text-xs",
-                              status.tone === 'accent' ? "text-accent" : "text-muted"
+                              "flex items-center",
+                              status.tone === 'accent' ? "text-accent" : "text-subtle"
                             )}
                             title={status.label}
                           >
                             {status.icon}
-                            {status.label}
+                            <span className="sr-only">{status.label}</span>
                           </span>
                         )}
                       </div>
