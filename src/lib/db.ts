@@ -28,6 +28,42 @@ import type { RealtimeChannel } from '@supabase/supabase-js';
  */
 
 // =============================================================================
+// Realtime channels
+// =============================================================================
+
+/**
+ * Creates a `postgres_changes` channel with a topic nothing else can claim.
+ *
+ * ── THE BUG THIS FIXES ───────────────────────────────────────────────────────
+ * These helpers used fixed topics — `inbox`, `posts:new`, `user:<id>`. Two
+ * subscribers asking for the same topic get the SAME underlying channel, and
+ * once a channel has been `subscribe()`d, binding another listener to it
+ * throws:
+ *
+ *     cannot add 'postgres_changes' callbacks for realtime after 'subscribe()'
+ *
+ * which aborts the caller and takes the screen down with it. `inbox` had three
+ * simultaneous subscribers: two in App.tsx (badges, delivery receipts) and one
+ * in ChatView.
+ *
+ * React StrictMode made it worse and non-obvious. It runs every effect twice in
+ * development — mount, clean up, mount again — and `removeChannel()` is async,
+ * so the first channel is still being torn down when the second claims the
+ * topic. That is why it looked intermittent and only in dev.
+ *
+ * A per-instance suffix removes both. The topic is a client-side identifier
+ * only; the server binds on the filter, so uniqueness costs nothing.
+ *
+ * NOT for Presence. A presence channel's topic is how peers find each other —
+ * `typingChannel` must keep its shared, deterministic name.
+ */
+let channelSeq = 0;
+function changesChannel(prefix: string): RealtimeChannel {
+  channelSeq += 1;
+  return supabase.channel(`${prefix}#${channelSeq}`);
+}
+
+// =============================================================================
 // Row → app-object mappers
 // =============================================================================
 
@@ -269,8 +305,7 @@ export const users = {
 
   /** Live profile subscription — replaces onSnapshot on the user document. */
   subscribe(id: string, onChange: (user: User) => void): () => void {
-    const channel = supabase
-      .channel(`user:${id}`)
+    const channel = changesChannel(`user:${id}`)
       .on('postgres_changes',
         { event: 'UPDATE', schema: 'public', table: 'users', filter: `id=eq.${id}` },
         (payload) => {
@@ -649,8 +684,7 @@ export const posts = {
   /** Any change to one author's posts — insert, edit, delete. A profile grid is
    *  small enough that refetching the page beats merging deltas by hand. */
   subscribeByUser(userId: string, onChange: () => void): () => void {
-    const channel = supabase
-      .channel(`posts:user:${userId}`)
+    const channel = changesChannel(`posts:user:${userId}`)
       .on('postgres_changes',
         { event: '*', schema: 'public', table: 'posts', filter: `user_id=eq.${userId}` },
         () => onChange())
@@ -706,8 +740,7 @@ export const posts = {
    * so a single row subscription carries them.
    */
   subscribeToPost(postId: string, onChange: (post: Post) => void): () => void {
-    const channel = supabase
-      .channel(`post:${postId}`)
+    const channel = changesChannel(`post:${postId}`)
       .on('postgres_changes',
         { event: 'UPDATE', schema: 'public', table: 'posts', filter: `id=eq.${postId}` },
         async () => {
@@ -721,8 +754,7 @@ export const posts = {
   /** New posts from people you follow. Realtime cannot filter on `in`, so the
    *  author check happens client-side after the row arrives. */
   subscribeToNew(authorIds: Set<string>, onInsert: (post: Post) => void): () => void {
-    const channel = supabase
-      .channel('posts:new')
+    const channel = changesChannel('posts:new')
       .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'posts' },
         async (payload) => {
           const row = payload.new as Row;
@@ -873,8 +905,7 @@ export const comments = {
   },
 
   subscribe(postId: string, onChange: () => void): () => void {
-    const channel = supabase
-      .channel(`comments:${postId}`)
+    const channel = changesChannel(`comments:${postId}`)
       .on('postgres_changes',
         { event: '*', schema: 'public', table: 'comments', filter: `post_id=eq.${postId}` },
         () => onChange())
@@ -1041,8 +1072,7 @@ export const chats = {
     conversationId: string,
     handlers: { onInsert?: (m: Message) => void; onDelete?: (id: string) => void }
   ): () => void {
-    const channel = supabase
-      .channel(`messages:${conversationId}`)
+    const channel = changesChannel(`messages:${conversationId}`)
       .on('postgres_changes',
         { event: 'INSERT', schema: 'public', table: 'messages', filter: `conversation_id=eq.${conversationId}` },
         async (payload) => {
@@ -1059,8 +1089,7 @@ export const chats = {
 
   /** Inbox ordering changes. Any message anywhere bumps a conversation. */
   subscribeToInbox(onChange: () => void): () => void {
-    const channel = supabase
-      .channel('inbox')
+    const channel = changesChannel('inbox')
       .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'conversations' }, () => onChange())
       .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'messages' }, () => onChange())
       .subscribe();
@@ -1273,8 +1302,7 @@ export const notifications = {
   },
 
   subscribe(userId: string, onChange: () => void): () => void {
-    const channel = supabase
-      .channel(`notifications:${userId}`)
+    const channel = changesChannel(`notifications:${userId}`)
       .on('postgres_changes',
         { event: '*', schema: 'public', table: 'notifications', filter: `recipient_id=eq.${userId}` },
         () => onChange())

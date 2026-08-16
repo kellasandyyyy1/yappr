@@ -199,7 +199,6 @@ export default function App() {
 
       await refreshBadges();
       cleanups.push(notificationsApi.subscribe(userId, refreshBadges));
-      cleanups.push(chatsApi.subscribeToInbox(refreshBadges));
 
       // Delivery acknowledgement — the "Delivered" tier. The receipt row
       // already exists (created by the fan_out_message_receipts trigger when
@@ -213,7 +212,19 @@ export default function App() {
         if (pending.length > 0) await chatsApi.markDelivered(pending, userId);
       };
       await ackDelivery();
-      cleanups.push(chatsApi.subscribeToInbox(ackDelivery));
+
+      // ONE inbox subscription driving both concerns, not two.
+      //
+      // This used to call subscribeToInbox twice — once for badges, once for
+      // delivery receipts — and ChatView opened a third. Every socket costs
+      // something, and until channel topics were made unique the three
+      // collided outright. Both handlers fire on the same event anyway.
+      cleanups.push(
+        chatsApi.subscribeToInbox(() => {
+          void refreshBadges();
+          void ackDelivery();
+        })
+      );
     };
 
     const unsubscribeAuth = auth.onChange((userId) => {

@@ -26,16 +26,32 @@ import { navigate } from '../lib/router';
  * discarded.
  *
  * ── HOW THE TOKEN BECOMES A SESSION ──────────────────────────────────────────
- * The link carries its token in the URL *fragment*, and the Supabase client is
- * configured with `detectSessionInUrl: true`, so it exchanges that fragment for
- * a recovery session automatically on load and emits PASSWORD_RECOVERY. This
- * component therefore waits for a session rather than parsing the URL itself.
+ * The client runs `flowType: 'pkce'`, so the link comes back as
+ * `?code=<uuid>` in the QUERY STRING — not a fragment. That code has to be
+ * exchanged for a session with `exchangeCodeForSession()`.
  *
- * That session is real but narrow: it authorises `updateUser({ password })` and
- * little else. It is deliberately signed out afterwards so a shared or
- * forwarded link cannot leave someone logged in.
+ * Order matters here. `detectSessionInUrl: true` means the client may already
+ * have consumed the code before this component mounts, and a code is
+ * single-use — exchanging one twice fails. So: look for an existing session
+ * first, only exchange if there isn't one, and strip the code from the URL
+ * afterwards so a refresh does not retry a spent code.
+ *
+ * PKCE CAVEAT, surfaced rather than hidden: the exchange needs the
+ * `code_verifier` that was stored in localStorage when the reset was
+ * requested. Request the reset in one browser and open the link in another —
+ * phone versus laptop, a webmail preview pane — and the verifier is absent and
+ * the exchange fails. That is not an expired link, and telling the user it is
+ * would send them round a loop that can never succeed, so it gets its own
+ * message.
+ *
+ * The resulting session is real but narrow: it authorises
+ * `updateUser({ password })` and little else. It is deliberately signed out
+ * afterwards so a forwarded link cannot leave anyone logged in.
  */
 type Phase = 'checking' | 'ready' | 'invalid' | 'done';
+
+/** Why the link could not be used — drives the message shown. */
+type FailReason = 'expired' | 'wrong-browser' | 'missing';
 
 export function ResetPasswordView() {
   const [phase, setPhase] = useState<Phase>('checking');
