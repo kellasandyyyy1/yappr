@@ -403,6 +403,44 @@ export const users = {
   },
 
   /**
+   * The `users_username_check` constraint, mirrored for client-side validation.
+   *
+   * Kept identical to the database on purpose: signup writes the profile row
+   * inside the same transaction as the auth account, so a violation rolls the
+   * whole signup back and GoTrue reports only "Database error saving new user"
+   * — no code, no column, no hint. Catching it here turns that dead end into a
+   * specific message before the request is ever sent.
+   */
+  USERNAME_PATTERN: /^[a-z0-9_]{3,30}$/,
+
+  /** Null when the handle is usable, or a reason string when it is not. */
+  async usernameProblem(username: string): Promise<string | null> {
+    // Format is checked locally so an obviously-bad handle costs no round trip.
+    if (!users.USERNAME_PATTERN.test(username)) {
+      return 'Usernames must be 3–30 characters: lowercase letters, numbers and underscores only.';
+    }
+
+    // Uniqueness goes through the `username_available` RPC, NOT a select.
+    //
+    // A `select count(*) from users where username = ...` looks equivalent and
+    // is worthless here: at signup the caller is still `anon`, `users_select`
+    // is `to authenticated`, and RLS hides every row — so the count is always
+    // zero and every username reports as free. That was verified against a
+    // handle that definitely existed. The RPC is SECURITY DEFINER, so it sees
+    // the row.
+    const { data, error } = await supabase.rpc('username_available', { candidate: username });
+
+    // Fail open on a network or permission error: the database constraint is
+    // still the real guard, and blocking signup because a convenience check
+    // could not run would be worse than letting the server reject it.
+    if (error) {
+      console.warn('[auth] username availability check failed', error.message);
+      return null;
+    }
+    return data === false ? 'That username is already taken.' : null;
+  },
+
+  /**
    * Resolves @mentions to users in one round trip.
    *
    * Firestore ran a separate equality query per username because it has no

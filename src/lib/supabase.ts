@@ -39,13 +39,34 @@ if (import.meta.env.DEV) {
     : SUPABASE_ANON_KEY.startsWith('sb_secret_') ? 'SECRET KEY — must never ship to a browser'
     : 'unrecognised';
 
+  // Head and tail of the key, never the middle. Enough to spot a wrong project,
+  // a truncation or a stray character — the exact failure this hit, where two
+  // junk characters on the end made every request 401 "Invalid API key".
+  const keyHead = SUPABASE_ANON_KEY.slice(0, 20);
+  const keyTail = SUPABASE_ANON_KEY.slice(-10);
+
   console.info('[supabase] client config', {
     url: SUPABASE_URL,
     trailingSlash: SUPABASE_URL.endsWith('/'),
     keyKind,
     keyLength: SUPABASE_ANON_KEY.length,
+    keyHead,
+    keyTail,
+    keyPreview: `${keyHead}…${keyTail}`,
     origin: window.location.origin,
+    // If this says false you are looking at a cached production bundle, not
+    // your source — see the dev cleanup in lib/pwa.ts.
+    isDevBuild: import.meta.env.DEV,
   });
+
+  const EXPECTED_URL = 'https://llgsamvklytdtgxumpzm.supabase.co';
+  const EXPECTED_KEY_HEAD = 'sb_publishable_R7If';
+  if (SUPABASE_URL !== EXPECTED_URL) {
+    console.error('[supabase] URL MISMATCH — expected', EXPECTED_URL, 'got', SUPABASE_URL);
+  }
+  if (!SUPABASE_ANON_KEY.startsWith(EXPECTED_KEY_HEAD)) {
+    console.error('[supabase] KEY MISMATCH — expected it to start', EXPECTED_KEY_HEAD, 'got', keyHead);
+  }
 
   // Vite only reads .env* at startup. Editing one and hot-reloading leaves the
   // page running the values from boot, which looks exactly like a wrong value.

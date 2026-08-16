@@ -83,9 +83,18 @@ self.addEventListener('message', (event) => {
 // Routing
 // =============================================================================
 
-// --- Navigations: network-first ---------------------------------------------
-// The app shell is precached, so `createHandlerBoundToURL` can serve index.html
-// offline. Denylisted paths must bypass it: /api/* is real server work, and the
+// --- Navigations: served from the precache -----------------------------------
+// NOTE: this is cache-first, not network-first. `createHandlerBoundToURL`
+// returns the *precached* index.html, and Workbox's precache is cache-first by
+// construction — it only refetches when the build hash changes. That is the
+// right behaviour for an app shell (instant loads, works offline), but it does
+// mean a client keeps the old shell until a new worker activates, which is what
+// the update prompt exists to resolve.
+//
+// An earlier version of this comment claimed network-first. It was wrong, and
+// the difference matters: it is why a stale shell can persist across deploys.
+//
+// Denylisted paths bypass it entirely: /api/* is real server work, and the
 // legal documents are fetched as files rather than routed by React.
 const navigationHandler = createHandlerBoundToURL('/index.html');
 registerRoute(

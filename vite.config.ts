@@ -62,11 +62,20 @@ export default defineConfig(({mode}) => {
         },
 
         devOptions: {
-          // Serve the worker in `npm run dev` too, otherwise PWA behaviour is
-          // only ever exercised in production builds.
-          enabled: true,
-          type: 'module',
-          navigateFallback: 'index.html',
+          // OFF by design.
+          //
+          // With this on, a worker registered in dev competes with one left
+          // over from any production build you ran earlier, and the stale one
+          // keeps serving its precached app shell — so the dev server is
+          // running and silently bypassed. Source edits appear to do nothing
+          // and values baked into the old bundle keep being sent. That cost
+          // real debugging time here.
+          //
+          // src/lib/pwa.ts actively unregisters stray workers in dev for the
+          // same reason. To exercise the PWA, build and run the production
+          // server: `npm run build && NODE_ENV=production npx tsx server.ts`,
+          // then `npm run verify:pwa`.
+          enabled: false,
         },
       }),
     ],

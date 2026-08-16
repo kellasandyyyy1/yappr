@@ -138,6 +138,56 @@ const CREDENTIAL_MESSAGE_PATTERNS = [
   /email logins are disabled/i,
 ];
 
+/**
+ * Status-only rules, for failures that carry neither a code nor a useful
+ * message. Checked after codes and message text.
+ *
+ * 504 is the one that matters here. GoTrue times out waiting on the
+ * confirmation email — `context deadline exceeded` in the auth logs — and
+ * returns a bare Gateway Timeout. It was landing on the generic fallback, so
+ * the user could not tell a transient mail-transport stall from a rejected
+ * password.
+ *
+ * The wording states that no account was created, which is verifiable: the
+ * signup transaction rolls back, and `auth.users` was confirmed empty of
+ * orphans after a 504.
+ */
+const STATUS_MESSAGES: Record<number, string> = {
+  502: 'The server is temporarily unreachable. Please try again in a moment.',
+  503: 'The service is temporarily unavailable. Please try again in a moment.',
+  504: 'The server took too long to respond, so your account was not created. Please try again.',
+};
+
+/**
+ * Message-text rules for failures GoTrue reports without a `code`.
+ *
+ * Both entries here were found by reproducing real failures, not by reading
+ * docs — each one was landing on the generic "Something went wrong" fallback,
+ * which is the least useful thing the UI can say.
+ */
+const MESSAGE_RULES: Array<{ test: RegExp; message: string }> = [
+  {
+    // 500 from the `handle_new_user` trigger. Signup writes the profile row in
+    // the same transaction as the account, so a violated constraint on
+    // `users` rolls the whole thing back — and GoTrue surfaces it as this one
+    // opaque string with no code and no detail about which constraint failed.
+    //
+    // In practice it is always the username: taken (unique), or failing
+    // `^[a-z0-9_]{3,30}$`. AuthView validates both before submitting, so this
+    // is the backstop for a race or a rule that drifts out of sync.
+    test: /database error saving new user/i,
+    message:
+      'That username is unavailable or contains unsupported characters. ' +
+      'Use 3–30 characters: lowercase letters, numbers and underscores only.',
+  },
+  {
+    // A malformed or rotated publishable key. Every request 401s identically,
+    // which reads exactly like a server outage until you look at the body.
+    test: /invalid api key/i,
+    message: 'The app is misconfigured and cannot reach the server. Please contact support.',
+  },
+];
+
 function codeOf(error: unknown): string {
   if (error && typeof error === 'object' && 'code' in error) {
     const code = (error as { code: unknown }).code;
@@ -176,6 +226,16 @@ export function authErrorMessage(error: unknown, fallback = GENERIC_CREDENTIALS)
   const code = codeOf(error);
   if (CREDENTIAL_CODES.has(code)) return GENERIC_CREDENTIALS;
   if (code in SAFE_MESSAGES) return SAFE_MESSAGES[code];
+
+  // Codeless failures, matched on message text. Checked before the credential
+  // patterns so a specific rule always beats the generic collapse.
+  const message = messageOf(error);
+  const rule = MESSAGE_RULES.find((r) => r.test.test(message));
+  if (rule) return rule.message;
+
+  const status = statusOf(error);
+  if (status !== null && status in STATUS_MESSAGES) return STATUS_MESSAGES[status];
+
   if (!code && matchesCredentialMessage(error)) return GENERIC_CREDENTIALS;
   return fallback;
 }
@@ -292,6 +352,19 @@ export function diagnoseAuthError(context: string, error: unknown): AuthDiagnost
         'Row level security rejected the write. If this is signup, the profile ' +
         'insert ran without a session — `users_insert_own` needs id = auth.uid().';
     }
+  } else if (/database error saving new user/i.test(message)) {
+    // Constraint violation inside the signup transaction — see MESSAGE_RULES.
+    kind = 'authorization';
+    hint =
+      'The handle_new_user trigger could not insert the profile row. Almost ' +
+      'always the username: already taken, or failing ^[a-z0-9_]{3,30}$. ' +
+      'GoTrue gives no detail, so check public.users for a conflicting row.';
+  } else if (/invalid api key/i.test(message)) {
+    kind = 'blocked';
+    hint =
+      'VITE_SUPABASE_ANON_KEY does not match the project. Compare it against ' +
+      'the publishable key in Supabase → Settings → API Keys. A stray ' +
+      'character makes every request 401 with this message.';
   } else if (code === 'email_not_confirmed') {
     // The password was correct. Not a failed attempt, and deliberately not
     // counted against the lockout — a user who cannot find the confirmation
@@ -301,6 +374,13 @@ export function diagnoseAuthError(context: string, error: unknown): AuthDiagnost
     kind = 'credentials';
   } else if (code.includes('rate_limit') || status === 429) {
     kind = 'rate-limit';
+  } else if (status === 504) {
+    kind = 'server';
+    hint =
+      'GoTrue timed out — check auth_logs for "context deadline exceeded". On ' +
+      'signup this is almost always the confirmation email: Supabase\'s built-in ' +
+      'SMTP is a testing service and stalls under load. Configure a custom SMTP ' +
+      'provider. No account is created; the transaction rolls back.';
   } else if (status !== null && status >= 500) {
     kind = 'server';
   }

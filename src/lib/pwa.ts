@@ -33,6 +33,39 @@ export function isServiceWorkerSupported(): boolean {
  * Registers the worker once per page load and resolves with its registration.
  * Safe to call from anywhere; later callers reuse the first promise.
  */
+/**
+ * Removes any service worker and cache left behind by a production build.
+ *
+ * WHY THIS IS NECESSARY
+ * Running the production server once registers a worker that precaches the
+ * built app shell. Switching back to `npm run dev` does NOT undo that: the
+ * worker is still registered for the origin, it keeps serving the precached
+ * `index.html`, and that HTML points at hashed `/assets/index-*.js` files which
+ * are precached too. The dev server is running and being completely bypassed.
+ *
+ * The symptom is brutal to diagnose — source edits have no effect, the console
+ * shows a hashed bundle name instead of `/src/main.tsx`, and values compiled
+ * into the old build (an API key, for instance) keep being sent long after the
+ * source was fixed. That is exactly what happened here.
+ *
+ * In dev we therefore tear down any existing worker and delete its caches
+ * before registering anything. Costs one pass over the cache list on startup.
+ */
+async function clearStaleWorkers(): Promise<void> {
+  try {
+    const registrations = await navigator.serviceWorker.getRegistrations();
+    for (const registration of registrations) {
+      await registration.unregister();
+      console.warn('[pwa] dev: unregistered a stale service worker', registration.scope);
+    }
+    const names = await caches.keys();
+    await Promise.all(names.map((name) => caches.delete(name)));
+    if (names.length > 0) console.warn('[pwa] dev: cleared caches', names);
+  } catch (err) {
+    console.warn('[pwa] dev: could not clear stale workers', err);
+  }
+}
+
 export function ensureServiceWorker(): Promise<ServiceWorkerRegistration | undefined> {
   if (registrationPromise) return registrationPromise;
 
@@ -41,6 +74,14 @@ export function ensureServiceWorker(): Promise<ServiceWorkerRegistration | undef
     // service worker at all. The app must stay fully functional without one.
     console.info('[pwa] service workers are not supported here — skipping');
     registrationPromise = Promise.resolve(undefined);
+    return registrationPromise;
+  }
+
+  // In dev, never let a worker from a previous production build stay in
+  // control. The service worker is not what you are debugging in dev, and a
+  // stale one silently serves an old bundle in place of your source.
+  if (import.meta.env.DEV) {
+    registrationPromise = clearStaleWorkers().then(() => undefined);
     return registrationPromise;
   }
 

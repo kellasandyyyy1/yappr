@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { auth as authApi } from '../lib/db';
+import { auth as authApi, users as usersApi } from '../lib/db';
 import { requestMigrationReset } from '../lib/auth-migration';
 import { useToast } from './ToastContext';
 import { Mail, Lock, User as UserIcon, Eye, EyeOff, Loader2, ShieldCheck, ShieldAlert, KeyRound, X } from 'lucide-react';
@@ -184,6 +184,22 @@ export function AuthView({ onAuthSuccess, notice, onDismissNotice }: AuthViewPro
           return;
         }
 
+        // Username, checked BEFORE the account is created.
+        //
+        // The profile row is inserted by a trigger inside the same transaction
+        // as the auth account, so a bad username rolls the entire signup back
+        // and GoTrue returns only "Database error saving new user" — HTTP 500,
+        // no error code, no indication that the username was the problem. That
+        // is unactionable, and it is what the generic "Something went wrong"
+        // message was actually reporting.
+        const handle = username.toLowerCase().replace(/\s+/g, '');
+        const usernameProblem = await usersApi.usernameProblem(handle);
+        if (usernameProblem) {
+          setError(usernameProblem);
+          setLoading(false);
+          return;
+        }
+
         // Full policy gate — length, common list, and HIBP breach corpus.
         setCheckingBreach(true);
         const verdict = await validateNewPassword(password, { email: parsed.value, username });
@@ -201,7 +217,7 @@ export function AuthView({ onAuthSuccess, notice, onDismissNotice }: AuthViewPro
         // yet, so a client-side insert would be rejected by RLS and leave an
         // account with no profile — unusable and impossible to re-register.
         const { user: created, session } = await authApi.signUp(parsed.value, password, {
-          username: username.toLowerCase().replace(/\s+/g, ''),
+          username: handle,
           displayName: username,
           termsVersion: legalVersion,
         });
