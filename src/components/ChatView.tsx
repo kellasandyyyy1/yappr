@@ -18,6 +18,7 @@ import { RowSkeleton } from './Skeleton';
 import { ConfirmDialog } from './Modal';
 import { moderatePreview } from '../lib/moderation';
 import { cn, formatTimeAgo } from '../lib/utils';
+import { messageTime, formatClock, startsNewCluster } from '../lib/messageGroups';
 import { useToast } from './ToastContext';
 import { sendPushNotification } from '../lib/sendPush';
 
@@ -936,7 +937,10 @@ export function ChatView({ user, onProfileClick, onUserClick, onChatOpenChange, 
           {/* Compact rhythm: 12px between date groups, 2px between consecutive
               bubbles. Was 24px everywhere, which turned a short exchange into a
               mostly-empty column. */}
-          <div ref={scrollRef} className="min-h-0 flex-1 space-y-3 overflow-y-auto pr-1 pt-2 scrollbar-hide">
+          {/* flex + gap rather than space-y: the message list below uses mt-auto
+              to sit on the bottom of the viewport, and space-y's
+              `> * + *` margin-top would out-specify it. */}
+          <div ref={scrollRef} className="flex min-h-0 flex-1 flex-col gap-3 overflow-y-auto pr-1 pt-2 scrollbar-hide">
             {messageCursor && (
               <div className="flex justify-center">
                 <button
@@ -955,7 +959,7 @@ export function ChatView({ user, onProfileClick, onUserClick, onChatOpenChange, 
                 did have zero messages, so this is the correct state, it simply
                 had no representation. */}
             {messages.length === 0 && !messageCursor && (
-              <div className="flex h-full flex-col items-center justify-center gap-2 px-6 py-10 text-center">
+              <div className="flex flex-1 flex-col items-center justify-center gap-2 px-6 py-10 text-center">
                 <div className="flex h-11 w-11 items-center justify-center rounded-full bg-surface-2 text-muted">
                   <MessageSquare size={20} />
                 </div>
@@ -966,16 +970,23 @@ export function ChatView({ user, onProfileClick, onUserClick, onChatOpenChange, 
               </div>
             )}
 
+            {/* mt-auto pins the conversation to the bottom of the pane. Without
+                it a chat with a handful of messages hung from the top with a
+                tall empty gap above the composer, instead of resting on it the
+                way a chat is expected to. Once the thread is taller than the
+                viewport the auto margin resolves to zero and normal scrolling
+                takes over. */}
+            <div className="mt-auto flex flex-col gap-3">
             {Object.entries(
               messages.reduce((groups: { [key: string]: Message[] }, msg) => {
-                const date = msg.createdAt ? new Date((msg.createdAt as any).toDate ? (msg.createdAt as any).toDate() : msg.createdAt) : new Date();
-                const dateKey = date.toDateString();
+                const at = messageTime(msg);
+                const dateKey = (at ? new Date(at) : new Date()).toDateString();
                 if (!groups[dateKey]) groups[dateKey] = [];
                 groups[dateKey].push(msg);
                 return groups;
               }, {})
             ).map(([dateStr, dateMessages]) => (
-              <div key={dateStr} className="space-y-0.5">
+              <div key={dateStr}>
                 <div className="flex items-center gap-3 pb-2 pt-1">
                   <div className="h-px flex-1 bg-line" />
                   <span className="whitespace-nowrap text-[11px] font-medium uppercase tracking-wide text-subtle">
@@ -992,13 +1003,20 @@ export function ChatView({ user, onProfileClick, onUserClick, onChatOpenChange, 
                   <div className="h-px flex-1 bg-line" />
                 </div>
 
-                {(dateMessages as Message[]).map((msg) => {
+                {(dateMessages as Message[]).map((msg, i, list) => {
                   const isMe = msg.senderId === user.uid;
                   const sender = isMe ? user : memberDetails[msg.senderId];
                   const status = statusOf(msg);
                   const hasReactions =
                     !!msg.reactions &&
                     Object.values(msg.reactions).some((ids) => ids.length > 0);
+
+                  // A run of messages from one sender is drawn as a single
+                  // block: the name appears on the first, the avatar on the
+                  // last, and the inner corners tighten so the run reads as one
+                  // turn rather than several disconnected bubbles.
+                  const isFirstInCluster = startsNewCluster(msg, list[i - 1]);
+                  const isLastInCluster = startsNewCluster(list[i + 1], msg);
 
                   return (
                     <div
@@ -1012,10 +1030,14 @@ export function ChatView({ user, onProfileClick, onUserClick, onChatOpenChange, 
                         // to the row would never match it and the metadata
                         // would stay invisible on hover.
                         "group/msg flex min-w-0 max-w-[85%] flex-col",
-                        isMe ? "ml-auto items-end" : "mr-auto items-start"
+                        isMe ? "ml-auto items-end" : "mr-auto items-start",
+                        // 2px inside a run, 10px between runs — the gap is what
+                        // does most of the grouping work. The first message of
+                        // a day needs none: the date divider already spaces it.
+                        i === 0 ? "" : isFirstInCluster ? "mt-2.5" : "mt-0.5"
                       )}
                     >
-                      {!isMe && isGroup && (
+                      {!isMe && isGroup && isFirstInCluster && (
                         <span className="mb-0.5 ml-7 text-xs font-medium text-muted">
                           {sender?.displayName || 'Unknown user'}
                         </span>
@@ -1025,18 +1047,34 @@ export function ChatView({ user, onProfileClick, onUserClick, onChatOpenChange, 
                         "relative flex min-w-0 max-w-full items-end gap-1.5",
                         isMe ? "flex-row-reverse" : "flex-row"
                       )}>
-                        {!isMe && <Avatar user={sender} size="xs" />}
+                        {/* One avatar per run, on the last message so it sits
+                            beside the newest thing that person said. Earlier
+                            bubbles keep its footprint so the column stays
+                            straight. */}
+                        {!isMe && (
+                          isLastInCluster
+                            ? <Avatar user={sender} size="xs" />
+                            : <div className="h-6 w-6 shrink-0" aria-hidden="true" />
+                        )}
 
-                        <div className="relative min-w-0 max-w-full">
+                        <div
+                          className="relative min-w-0 max-w-full"
+                          title={!isLastInCluster ? formatClock(msg) : undefined}
+                        >
                           {/* leading-snug rather than leading-relaxed: at this
                               bubble width relaxed adds a visible gap between
                               every line and roughly a third to the height. */}
                           <div className={cn(
                             "relative overflow-hidden rounded-2xl text-sm leading-snug",
                             "min-w-0 max-w-full break-words [overflow-wrap:anywhere]",
-                            isMe
-                              ? "rounded-br-md bg-accent text-white"
-                              : "rounded-bl-md border border-line bg-surface-2 text-fg",
+                            isMe ? "bg-accent text-white" : "border border-line bg-surface-2 text-fg",
+                            // Corners on the sender's own side flatten where a
+                            // bubble continues a run, so the stack reads as one
+                            // shape; the tail is kept for the last of the run.
+                            isMe && !isFirstInCluster && "rounded-tr-md",
+                            isMe && isLastInCluster && "rounded-br-md",
+                            !isMe && !isFirstInCluster && "rounded-tl-md",
+                            !isMe && isLastInCluster && "rounded-bl-md",
                             msg.type === 'image' ? "p-1" : "px-3 py-1.5"
                           )}>
                             {msg.replyToId && (
@@ -1119,38 +1157,45 @@ export function ChatView({ user, onProfileClick, onUserClick, onChatOpenChange, 
                           hover or focus, and the status collapses to its icon
                           with the label kept in the tooltip and for screen
                           readers. `h-3.5` reserves the row so bubbles do not
-                          shift on hover. */}
-                      <div
-                        className={cn(
-                          "mt-0.5 flex h-3.5 items-center gap-1 text-[10px] leading-none",
-                          "opacity-0 transition-opacity duration-100",
-                          "group-hover/msg:opacity-100 group-focus-within/msg:opacity-100",
-                          isMe ? "mr-0 justify-end" : "ml-7 justify-start"
-                        )}
-                      >
-                        <span className="text-subtle">
-                          {msg.createdAt
-                            ? new Date((msg.createdAt as any).toDate ? (msg.createdAt as any).toDate() : msg.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
-                            : 'Sending…'}
-                        </span>
-                        {isMe && status && (
-                          <span
-                            className={cn(
-                              "flex items-center",
-                              status.tone === 'accent' ? "text-accent" : "text-subtle"
-                            )}
-                            title={status.label}
-                          >
-                            {status.icon}
-                            <span className="sr-only">{status.label}</span>
+                          shift on hover.
+
+                          One row per run, not per bubble — a run spans at most
+                          five minutes, so repeating the same time under each of
+                          its bubbles would restore exactly the height the
+                          grouping removes. The bubbles above it carry their own
+                          time as a native tooltip instead. */}
+                      {isLastInCluster && (
+                        <div
+                          className={cn(
+                            "mt-0.5 flex h-3.5 items-center gap-1 text-[10px] leading-none",
+                            "opacity-0 transition-opacity duration-100",
+                            "group-hover/msg:opacity-100 group-focus-within/msg:opacity-100",
+                            isMe ? "mr-0 justify-end" : "ml-7 justify-start"
+                          )}
+                        >
+                          <span className="text-subtle">
+                            {msg.createdAt ? formatClock(msg) : 'Sending…'}
                           </span>
-                        )}
-                      </div>
+                          {isMe && status && (
+                            <span
+                              className={cn(
+                                "flex items-center",
+                                status.tone === 'accent' ? "text-accent" : "text-subtle"
+                              )}
+                              title={status.label}
+                            >
+                              {status.icon}
+                              <span className="sr-only">{status.label}</span>
+                            </span>
+                          )}
+                        </div>
+                      )}
                     </div>
                   );
                 })}
               </div>
             ))}
+            </div>
             <div ref={messagesEndRef} />
           </div>
 

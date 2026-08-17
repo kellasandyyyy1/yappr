@@ -207,6 +207,46 @@
     -ms-overflow-style: none;
     scrollbar-width: none;
   }
+
+  /* Scrollable panes keep their scrollbar — hiding it costs the only cue that
+     there is more below — but the platform default is a light-grey rail with a
+     near-white thumb, which on a dark modal was the brightest element on
+     screen and framed the content like a native window. This is the same bar
+     drawn in the app's own line colours.
+
+     Applied to every .modal-body, so the Edit Profile modal and the rest stay
+     consistent; .scrollbar-thin is here for scroll containers elsewhere. */
+  .scrollbar-thin,
+  .modal-body {
+    scrollbar-width: thin;
+    scrollbar-color: var(--color-line-strong) transparent;
+  }
+  .scrollbar-thin::-webkit-scrollbar,
+  .modal-body::-webkit-scrollbar {
+    width: 10px;
+    height: 10px;
+  }
+  .scrollbar-thin::-webkit-scrollbar-track,
+  .modal-body::-webkit-scrollbar-track {
+    background: transparent;
+  }
+  .scrollbar-thin::-webkit-scrollbar-thumb,
+  .modal-body::-webkit-scrollbar-thumb {
+    background-color: var(--color-line-strong);
+    border-radius: 999px;
+    /* A transparent border clipped to the content box insets the thumb, so it
+       reads as a floating pill rather than a full-width bar. */
+    border: 3px solid transparent;
+    background-clip: content-box;
+  }
+  .scrollbar-thin:hover::-webkit-scrollbar-thumb,
+  .modal-body:hover::-webkit-scrollbar-thumb {
+    background-color: var(--color-subtle);
+  }
+  .scrollbar-thin::-webkit-scrollbar-corner,
+  .modal-body::-webkit-scrollbar-corner {
+    background: transparent;
+  }
 }
 
 /* Honour the OS setting: drop every animation, keep the app fully usable. */

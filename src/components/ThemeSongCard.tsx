@@ -1,7 +1,7 @@
 import React, { useState, useRef, useEffect } from 'react';
 import YouTube, { YouTubeProps } from 'react-youtube';
 import { Play, Pause, Music, Volume2, VolumeX, Loader2 } from 'lucide-react';
-import { motion, AnimatePresence } from 'motion/react';
+import { motion } from 'motion/react';
 import { ThemeSong } from '../types';
 import { cn } from '../lib/utils';
 import { useToast } from './ToastContext';
@@ -102,7 +102,7 @@ export function ThemeSongCard({ song, isOwnProfile, onPlay: onPlayProp }: ThemeS
       key={song.youtubeId}
       initial={{ opacity: 0, y: 10 }}
       animate={{ opacity: 1, y: 0 }}
-      className="w-full max-w-[320px] relative group px-2"
+      className="group relative w-full max-w-[340px]"
     >
       {/* Invisible Player Container - slightly larger for mobile visibility checks but hidden */}
       <div className="absolute opacity-0 pointer-events-none overflow-hidden -z-50"
@@ -140,83 +140,97 @@ export function ThemeSongCard({ song, isOwnProfile, onPlay: onPlayProp }: ThemeS
         />
       </div>
 
+      {/* A now-playing chip, not a feature card.
+          Previously: 16px padding, a 56px cover, a bold all-caps "MUSIC
+          PROFILE" label above the title, and an always-visible mute button —
+          four elements competing with the one thing that matters, the song
+          name. Now the title is the only prominent text and everything else
+          recedes. */}
+      {/* Anywhere in the chip toggles playback, but the two real controls below
+          are what the keyboard and screen readers see — a <button> may not
+          contain another interactive element, so the outer box stays a div. */}
       <div
         onClick={togglePlay}
         className={cn(
-          "relative p-4 rounded-2xl border transition-colors duration-150 cursor-pointer overflow-hidden",
+          "relative flex items-center gap-2.5 overflow-hidden rounded-xl px-2.5 py-2 cursor-pointer",
+          "border transition-colors duration-150",
+          // Sits ON the surrounding card rather than beside it: a near
+          // transparent fill instead of the solid surface-2 block, so it reads
+          // as inline content.
           isPlaying
-            ? "bg-surface-3 border-line-strong scale-[1.02]"
-            : "bg-surface-2 border-line hover:bg-surface-3 active:scale-95"
+            ? "border-accent/30 bg-accent/[0.07]"
+            : "border-line/70 bg-white/[0.02] hover:bg-white/[0.04]"
         )}
       >
-        {/* Playing Animation Glow */}
-        <AnimatePresence>
-          {isPlaying && (
-            <motion.div
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 1 }}
-              exit={{ opacity: 0 }}
-              className="absolute inset-x-0 bottom-0 h-1/2 pointer-events-none"
-            />
+        {/* Cover, 36px. It is also the play control, which removes the need for
+            a separate button beside it. */}
+        <button
+          type="button"
+          onClick={togglePlay}
+          aria-label={isPlaying ? `Pause ${song.title}` : `Play ${song.title}`}
+          className="relative shrink-0 rounded-lg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent"
+        >
+          <span className="flex h-9 w-9 items-center justify-center overflow-hidden rounded-lg bg-surface-3">
+            {isPlayerReady ? (
+              <img
+                src={song.coverUrl}
+                alt=""
+                className="h-full w-full object-cover"
+                referrerPolicy="no-referrer" loading="lazy" decoding="async"
+              />
+            ) : (
+              <Loader2 size={14} className="animate-spin text-subtle" />
+            )}
+          </span>
+          <span className={cn(
+            "absolute inset-0 flex items-center justify-center rounded-lg bg-black/45 transition-opacity duration-100",
+            // Once playing, the cover art is more useful than the icon — the
+            // control only comes back on hover.
+            isPlaying && "opacity-0 group-hover:opacity-100"
+          )}>
+            {isPlaying
+              ? <Pause size={14} className="fill-current text-white" />
+              : <Play size={14} className="fill-current text-white" />}
+          </span>
+        </button>
+
+        {/* Title is the anchor; artist supports it. The "MUSIC PROFILE" caption
+            is gone — the note icon says the same thing in a fraction of the
+            space. */}
+        <div className="min-w-0 flex-1">
+          <div className="flex items-center gap-1">
+            <Music size={9} className={cn("shrink-0", isPlaying ? "text-accent" : "text-subtle")} />
+            <span className="truncate text-[13px] font-semibold leading-tight text-fg">
+              {song.title}
+            </span>
+          </div>
+          {song.artist && (
+            <p className="mt-0.5 truncate text-[11px] leading-tight text-subtle">
+              {song.artist}
+            </p>
           )}
-        </AnimatePresence>
-
-        <div className="flex items-center gap-4 relative z-10">
-          {/* Album Cover */}
-          <div className="relative shrink-0">
-            <div className={cn(
-              "w-14 h-14 rounded-2xl overflow-hidden bg-surface-3 border border-line transition-transform duration-150 flex items-center justify-center",
-              isPlaying && "animate-pulse"
-            )}>
-              {isPlayerReady ? (
-                <img
-                  src={song.coverUrl}
-                  alt={song.title}
-                  className="w-full h-full object-cover"
-                  referrerPolicy="no-referrer" loading="lazy" decoding="async" />
-              ) : (
-                <Loader2 size={24} className="text-accent animate-spin" />
-              )}
-            </div>
-
-            {/* Play/Pause Button Overlay */}
-            <div className={cn(
-              "absolute inset-0 flex items-center justify-center bg-black/40 rounded-2xl transition-opacity",
-              isPlaying ? "opacity-0 group-hover:opacity-100" : "opacity-100"
-            )}>
-              {isPlaying ? <Pause size={20} className="text-white" /> : <Play size={20} className="text-white fill-current" />}
-            </div>
-          </div>
-
-          {/* Info */}
-          <div className="flex-1 min-w-0">
-            <div className="flex items-center gap-1.5 mb-0.5">
-              <Music size={10} className={cn(isPlaying ? "text-accent" : "text-subtle")} />
-              <span className="text-xs font-black uppercase tracking-widest text-subtle">Music profile</span>
-            </div>
-            <h4 className="text-sm font-bold truncate leading-tight">{song.title}</h4>
-            <p className="text-xs text-muted font-medium truncate mt-0.5">{song.artist}</p>
-          </div>
-
-          {/* Mute toggle for viewers */}
-          <button
-            onClick={toggleMute}
-            className="p-2 rounded-full hover:bg-surface-3 transition-colors text-subtle hover:text-fg"
-          >
-            {isMuted ? <VolumeX size={16} /> : <Volume2 size={16} />}
-          </button>
         </div>
 
-        {/* Playback Progress Indicator (Fake/Simple for now) */}
+        {/* Mute is hover-revealed rather than permanently occupying space next
+            to the play control, where it read as a second primary action. It
+            stays visible once playback starts, so touch — where hover never
+            fires — can still reach it when it matters. */}
+        <button
+          type="button"
+          onClick={toggleMute}
+          aria-label={isMuted ? 'Unmute' : 'Mute'}
+          className={cn(
+            "flex h-7 w-7 shrink-0 items-center justify-center rounded-full text-subtle",
+            "transition-opacity duration-100 hover:text-fg",
+            "focus-visible:opacity-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent",
+            isPlaying ? "opacity-100" : "opacity-0 group-hover:opacity-100"
+          )}
+        >
+          {isMuted ? <VolumeX size={13} /> : <Volume2 size={13} />}
+        </button>
+
         {isPlaying && (
-          <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-surface-2">
-            <motion.div
-              initial={{ scaleX: 0 }}
-              animate={{ scaleX: 1 }}
-              transition={{ duration: 30, repeat: Infinity, ease: "linear" }}
-              className="h-full bg-accent origin-left"
-            />
-          </div>
+          <span className="absolute inset-x-0 bottom-0 h-px bg-accent/50" />
         )}
       </div>
     </motion.div>

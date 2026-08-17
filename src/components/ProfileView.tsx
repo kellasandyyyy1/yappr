@@ -9,7 +9,7 @@ import {
 import { uploadFile, UploadError } from '../lib/supabase';
 import { User, Post } from '../types';
 import { motion, AnimatePresence } from 'motion/react';
-import { LogOut, Grid, List, Layers, AtSign, X, Trash2, Camera, User as UserIcon, AlignLeft, Loader2, ChevronLeft, ChevronRight, Heart, MessageCircle, QrCode, Download, Music, ShieldCheck, FileText } from 'lucide-react';
+import { LogOut, Grid, List, Layers, AtSign, X, Trash2, Camera, User as UserIcon, AlignLeft, Loader2, ChevronLeft, ChevronRight, Heart, MessageCircle, QrCode, Download, Music, ShieldCheck, FileText, Plus } from 'lucide-react';
 import { navigate } from '../lib/router';
 import { cn, formatTimeAgo } from '../lib/utils';
 import { UsersListModal } from './UsersListModal';
@@ -490,16 +490,24 @@ export function ProfileView({ user: currentUser, profileUserId, onLogout, onBack
         <div className="flex items-center gap-4">
           <div className="relative shrink-0">
             {isOwnProfile && !hasAvatar ? (
-              /* Empty state is now the dashed ring and a single glyph. The
-                 camera icon plus an "Add photo" caption filled the circle and
-                 read as content rather than as a placeholder. */
+              /* Empty state is the dashed ring plus a single glyph — the camera
+                 icon with an "Add photo" caption filled the circle and read as
+                 content rather than as a placeholder.
+
+                 The dashed ring alone was too quiet to register as an action,
+                 so it now carries the same accent "+" badge the filled avatar
+                 uses for "change photo". Two affordances, one obvious: the ring
+                 says empty, the badge says you can do something about it. */
               <button
                 onClick={() => setIsEditing(true)}
                 aria-label="Add a profile photo"
                 title="Add photo"
-                className="press flex h-20 w-20 items-center justify-center rounded-full border-2 border-dashed border-line-strong bg-surface-2 text-subtle transition-colors duration-100 hover:border-accent hover:text-accent"
+                className="press group/avatar relative flex h-20 w-20 items-center justify-center rounded-full border-2 border-dashed border-line-strong bg-surface-2 text-subtle transition-colors duration-100 hover:border-accent hover:bg-accent/5 hover:text-accent"
               >
                 <Camera size={22} />
+                <span className="absolute -bottom-0.5 -right-0.5 flex h-7 w-7 items-center justify-center rounded-full border-2 border-bg bg-accent text-white transition-transform duration-100 group-hover/avatar:scale-110">
+                  <Plus size={15} strokeWidth={2.5} />
+                </span>
               </button>
             ) : (
               <>

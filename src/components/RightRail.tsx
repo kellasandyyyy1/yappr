@@ -74,9 +74,13 @@ export function RightRail({ user, onUserClick, onProfileClick }: RightRailProps)
       className="hidden w-80 shrink-0 lg:block"
       aria-label="Profile summary and suggestions"
     >
-      <div className="sticky top-0 space-y-4 py-6">
+      {/* The two cards were identical — same fill, same border, 16px apart —
+          so they read as one long panel with a stray heading in the middle.
+          They are now separated three ways: more air between them, a raised
+          fill on the identity card, and a heavier border on it. */}
+      <div className="sticky top-0 space-y-5 py-6">
         {/* Profile summary */}
-        <section className="rounded-2xl border border-line bg-surface p-5">
+        <section className="rounded-2xl border border-line-strong bg-surface-2 p-5">
           <button
             onClick={onProfileClick}
             className="press flex w-full items-center gap-3 text-left"

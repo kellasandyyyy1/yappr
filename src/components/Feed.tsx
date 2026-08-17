@@ -655,8 +655,21 @@ export function Feed({ user, onNewPost, onProfileClick, onUserClick, onShowComme
             <PostSkeleton />
           </div>
         )}
-        {!hasMore && posts.length > 0 && (
-          <p className="py-8 text-sm text-subtle">You're all caught up.</p>
+        {/* Only worth saying after a real scroll. On a feed of three posts
+            "You're all caught up." announced the end of something the reader
+            could already see the end of, and it landed as emptiness rather
+            than reassurance. Below a full first page (15) the feed just stops.
+
+            Restyled as a hairline rule with the text inline, so it reads as a
+            terminator instead of a lone sentence floating in the column. */}
+        {!hasMore && posts.length >= 15 && (
+          <div className="flex w-full items-center gap-3 py-6" role="status">
+            <span className="h-px flex-1 bg-line" />
+            <span className="whitespace-nowrap text-[11px] uppercase tracking-wide text-subtle">
+              You're all caught up
+            </span>
+            <span className="h-px flex-1 bg-line" />
+          </div>
         )}
         {!isLoadingMore && hasLoadedOnce && posts.length === 0 && (
           <div className="mx-auto flex max-w-sm flex-col items-center gap-4 py-16 text-center">
