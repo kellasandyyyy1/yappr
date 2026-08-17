@@ -199,7 +199,7 @@ export function ThemeSongSearch({ onSelect, onClose, initialSong }: ThemeSongSea
         </button>
       </div>
 
-      <div className="flex-1 overflow-y-auto pr-1 scrollbar-hide space-y-6">
+      <div className="min-h-0 flex-1 overflow-y-auto pr-1 scrollbar-hide space-y-6">
         {activeTab === 'search' ? (
           <div className="space-y-6">
             <div className="space-y-3">

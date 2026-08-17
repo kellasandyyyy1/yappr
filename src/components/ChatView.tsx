@@ -896,11 +896,18 @@ export function ChatView({ user, onProfileClick, onUserClick, onChatOpenChange, 
           </div>
         </div>
 
-        <div className="flex-1 relative overflow-hidden flex flex-col">
+        {/* min-h-0 is load-bearing, not tidying.
+            A flex item defaults to `min-height: auto`, which refuses to shrink
+            below its content. Once a conversation grew past the viewport this
+            pane expanded to fit every message instead of scrolling, which
+            pushed the composer off the bottom of the screen and left the
+            conversation looking unreachable. Short chats hid the bug entirely,
+            because the content still fitted. */}
+        <div className="relative flex min-h-0 flex-1 flex-col overflow-hidden">
           {/* Compact rhythm: 12px between date groups, 2px between consecutive
               bubbles. Was 24px everywhere, which turned a short exchange into a
               mostly-empty column. */}
-          <div className="flex-1 space-y-3 overflow-y-auto pr-1 pt-2 scrollbar-hide">
+          <div className="min-h-0 flex-1 space-y-3 overflow-y-auto pr-1 pt-2 scrollbar-hide">
             {messageCursor && (
               <div className="flex justify-center">
                 <button
@@ -1190,7 +1197,7 @@ export function ChatView({ user, onProfileClick, onUserClick, onChatOpenChange, 
                   <p className="text-sm font-medium text-subtle mt-2">Group chat</p>
                 </div>
 
-                <div className="flex-1 overflow-y-auto space-y-4 pr-2 scrollbar-hide">
+                <div className="min-h-0 flex-1 overflow-y-auto space-y-4 pr-2 scrollbar-hide">
                   <h5 className="text-xs font-black uppercase tracking-widest text-accent mb-2">Authenticated Members</h5>
                    {[user, ...Object.values(memberDetails)].map((u: User) => (
                       <div key={u.uid} className="flex items-center gap-3 p-3 rounded-2xl bg-surface-2 border border-line relative group/member">
@@ -1593,7 +1600,7 @@ export function ChatView({ user, onProfileClick, onUserClick, onChatOpenChange, 
                 </button>
               </form>
 
-              <div className="flex-1 overflow-y-auto space-y-4 pr-1 scrollbar-hide">
+              <div className="min-h-0 flex-1 overflow-y-auto space-y-4 pr-1 scrollbar-hide">
                 {isSearching ? (
                   <div className="space-y-3"><RowSkeleton /><RowSkeleton /></div>
                 ) : foundUser ? (

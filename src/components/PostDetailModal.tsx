@@ -127,7 +127,7 @@ export function PostDetailModal({ postId, currentUser, onClose, onCommentClick, 
               </button>
             </div>
 
-            <div className="flex-1 space-y-4 overflow-y-auto p-4 scrollbar-hide sm:p-6">
+            <div className="min-h-0 flex-1 space-y-4 overflow-y-auto p-4 scrollbar-hide sm:p-6">
               {post.type === 'voice' && post.voiceUrl ? (
                 <VoiceMessage url={post.voiceUrl} />
               ) : (

@@ -538,7 +538,7 @@ export function CommentsModal({ postId, postUserId, user, onClose, onUserClick }
       <>
         <ModalHeader title="Comments" onClose={onClose} id="comments-title" />
 
-        <div className="flex-1 overflow-y-auto p-8 space-y-8 scrollbar-hide">
+        <div className="min-h-0 flex-1 overflow-y-auto p-8 space-y-8 scrollbar-hide">
           {loading ? (
             <div className="space-y-3">
               <RowSkeleton />
