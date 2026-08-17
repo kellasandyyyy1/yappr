@@ -11,16 +11,20 @@ import {
 import { uploadFile, UploadError } from '../lib/supabase';
 import { User, Comment, Post } from '../types';
 import { motion, AnimatePresence } from 'motion/react';
-import { X, Send, MessageSquare, Mic, Image as ImageIcon, Loader2, Play, Pause, Square, Volume2, Trash2, AtSign, Heart, Grid } from 'lucide-react';
+import { X, Send, MessageSquare, Mic, Image as ImageIcon, Loader2, Play, Pause, Square, Volume2, Trash2, AtSign, Heart, Grid, CornerDownRight } from 'lucide-react';
 import { cn, formatTimeAgo } from '../lib/utils';
 import { ImageViewer } from './ImageViewer';
 import { VoiceMessage } from './VoiceMessage';
-import { EmojiReactions } from './EmojiReactions';
 import { Avatar } from './Avatar';
 import { RowSkeleton } from './Skeleton';
 import { Modal, ModalHeader, ConfirmDialog } from './Modal';
 import { useToast } from './ToastContext';
 import { sendPushNotification } from '../lib/sendPush';
+
+/** A comment "like" is a heart reaction. comment_reactions holds one row per
+ *  (comment, user), so liking is the same write path as any other reaction —
+ *  no second table, and the two can never disagree. */
+const LIKE_EMOJI = '❤️';
 
 interface CommentsModalProps {
   postId: string;
@@ -93,6 +97,16 @@ export function CommentsModal({ postId, postUserId, user, onClose, onUserClick }
   }, [postId, user.uid]);
 
   const realTimeLikesCount = post?.likesCount ?? 0;
+
+  // The loaded thread is the truth once it arrives; until then the post's
+  // trigger-maintained count stands in, so the header never flashes "(0)" on a
+  // thread that has comments. Null while both are unknown — the header then
+  // shows no count rather than a wrong one.
+  const commentCount = loading
+    ? (post?.commentsCount ?? null)
+    : loadError
+      ? (post?.commentsCount ?? null)
+      : comments.length;
 
   // Comments, with authors and reactions joined. Firestore issued a getDoc per
   // distinct commenter on every snapshot.
@@ -323,6 +337,10 @@ export function CommentsModal({ postId, postUserId, user, onClose, onUserClick }
     }
   };
 
+  /** The heart button. Delegates to the reaction path so a like and an emoji
+   *  reaction stay mutually exclusive, matching what the table enforces. */
+  const handleToggleLike = (commentId: string) => handleReactComment(commentId, LIKE_EMOJI);
+
   const confirmAndSendAttachment = async () => {
     if (!pendingAttachment) return;
     setIsSubmitting(true);
@@ -545,9 +563,20 @@ export function CommentsModal({ postId, postUserId, user, onClose, onUserClick }
   return (
     <Modal onClose={onClose} size="lg" labelledBy="comments-title" className="sm:h-[80vh]">
       <>
-        <ModalHeader title="Comments" onClose={onClose} id="comments-title" />
+        {/* The count matches the one on the post card, so opening the modal
+            confirms what the card promised instead of leaving the reader to
+            count rows. Driven by the loaded thread once it arrives, falling
+            back to the post's stored count while it loads. */}
+        <ModalHeader
+          title={`Comments${commentCount === null ? '' : ` (${commentCount})`}`}
+          onClose={onClose}
+          id="comments-title"
+        />
 
-        <div className="min-h-0 flex-1 overflow-y-auto p-8 space-y-8 scrollbar-hide">
+        {/* Was p-8 with space-y-8: 32px of padding and 32px between comments
+            meant a single comment sat in the middle of a mostly empty modal.
+            Comments are now densely stacked, like the chat transcript. */}
+        <div className="min-h-0 flex-1 overflow-y-auto px-4 py-3 sm:px-5">
           {loading ? (
             <div className="space-y-3">
               <RowSkeleton />
@@ -566,117 +595,192 @@ export function CommentsModal({ postId, postUserId, user, onClose, onUserClick }
                   <p className="mt-1.5 text-xs leading-relaxed text-danger/90">{loadError}</p>
                 </div>
               ) : comments.length === 0 ? (
-                <div className="py-12 text-center">
-                  <p className="text-subtle font-bold uppercase tracking-widest text-xs">No comments yet.</p>
+                <div className="py-10 text-center">
+                  <p className="text-sm text-muted">No comments yet.</p>
+                  <p className="mt-1 text-xs text-subtle">Be the first to say something.</p>
                 </div>
               ) : (
-                comments.map((comment) => (
-              <div
-                key={comment.id}
-                className="flex gap-4"
-              >
-                <button
-                  onClick={() => onUserClick?.(comment.userId)}
-                  aria-label={`View ${comment.user?.displayName ?? 'user'}'s profile`}
-                  className="press shrink-0"
-                >
-                  <Avatar user={comment.user} size="md" />
-                </button>
-                <div className="space-y-2 flex-1 min-w-0">
-                  <div className="flex items-center justify-between gap-2">
-                    <div className="flex flex-wrap items-center gap-x-2 gap-y-0.5 min-w-0">
-                      <button 
-                        onClick={() => onUserClick?.(comment.userId)}
-                        className="text-xs font-black uppercase tracking-widest hover:text-accent transition-colors truncate max-w-[120px]"
-                      >
-                        {comment.user?.displayName || 'Anonymous'}
-                      </button>
-                      <span className="text-xs text-muted uppercase font-bold whitespace-nowrap">{formatTimeAgo(comment.createdAt)}</span>
-                    </div>
-                    {comment.userId === user.uid && (
-                      <button 
-                        onClick={() => setConfirmDeleteId(comment.id)}
-                        disabled={deletingId === comment.id}
-                        className="p-1.5 text-subtle hover:text-danger transition-colors disabled:opacity-50 shrink-0"
-                      >
-                        {deletingId === comment.id ? (
-                          <Loader2 size={10} className="animate-spin" />
-                        ) : (
-                          <Trash2 size={10} />
-                        )}
-                      </button>
-                    )}
-                  </div>
-                  
-                  <div className="bg-surface-2 border border-line rounded-2xl p-4">
-                    {comment.replyToId && (
-                      <div className="mb-3 p-2 bg-surface-2 border-l-2 border-accent rounded-lg text-xs space-y-1">
-                        <span className="font-black uppercase tracking-widest text-accent">Replying to {comment.replyToSenderName}</span>
-                        <p className="truncate italic text-muted">{comment.replyToContent}</p>
-                      </div>
-                    )}
-                    {comment.type === 'image' ? (
-                      <div className="space-y-2 cursor-zoom-in" onClick={() => setViewingImage(comment.imageUrl!)}>
-                        <img 
-                          src={comment.imageUrl} 
-                          alt="Comment attachment" 
-                          className="rounded-xl w-full max-w-sm object-cover shadow-lg border border-line hover:scale-[1.02] transition-transform duration-150" loading="lazy" decoding="async" />
-                        {comment.content !== 'Sent an image' && <p className="text-sm text-fg leading-relaxed font-light break-words">{renderContent(comment.content)}</p>}
-                      </div>
-                    ) : comment.type === 'voice' ? (
-                      <VoiceMessage url={comment.voiceUrl || ''} />
-                    ) : (
-                      <p className="text-sm text-fg leading-relaxed font-light break-words">{renderContent(comment.content)}</p>
-                    )}
-                  </div>
-                  
-                  <div className="pt-1">
-                    <EmojiReactions 
-                      reactions={comment.reactions} 
-                      onReact={(emoji) => handleReactComment(comment.id, emoji)} 
-                      currentUserId={user.uid} 
-                      isSmall={true}
-                    />
-                    <button 
-                      onClick={() => setReplyingTo(comment)}
-                      className="text-xs font-black uppercase tracking-widest text-muted hover:text-accent transition-colors"
-                    >
-                      Reply
-                    </button>
-                  </div>
-                </div>
-              </div>
-                ))
+                <ul className="divide-y divide-line/60">
+                  {comments.map((comment) => {
+                    const hearts = comment.reactions?.[LIKE_EMOJI] ?? [];
+                    const likedByMe = hearts.includes(user.uid);
+                    // Reactions other than the heart still exist on older
+                    // comments; they stay visible and removable rather than
+                    // being orphaned by the switch to a like button.
+                    const otherReactions = Object.entries(
+                      (comment.reactions ?? {}) as Record<string, string[]>
+                    ).filter(([emoji, uids]) => emoji !== LIKE_EMOJI && uids.length > 0);
+
+                    return (
+                      <li key={comment.id} className="group/comment flex gap-2.5 py-2.5 first:pt-0.5">
+                        <button
+                          onClick={() => onUserClick?.(comment.userId)}
+                          aria-label={`View ${comment.user?.displayName ?? 'user'}'s profile`}
+                          className="press mt-0.5 shrink-0"
+                        >
+                          <Avatar user={comment.user} size="sm" />
+                        </button>
+
+                        <div className="min-w-0 flex-1">
+                          {/* Byline, then the comment body as plain text.
+                              The body used to sit in a bordered, rounded,
+                              filled box — the same shape as the composer
+                              directly below it — so a posted comment looked
+                              like a text field waiting to be typed in. Read
+                              only content gets no chrome at all now; the
+                              avatar and byline are what mark where one
+                              comment ends and the next begins. */}
+                          <div className="flex items-baseline gap-2">
+                            <button
+                              onClick={() => onUserClick?.(comment.userId)}
+                              className="truncate text-[13px] font-semibold text-fg transition-colors hover:text-accent"
+                            >
+                              {comment.user?.displayName || 'Anonymous'}
+                            </button>
+                            <span className="whitespace-nowrap text-[11px] text-subtle">
+                              {formatTimeAgo(comment.createdAt)}
+                            </span>
+                            {comment.userId === user.uid && (
+                              <button
+                                onClick={() => setConfirmDeleteId(comment.id)}
+                                disabled={deletingId === comment.id}
+                                aria-label="Delete comment"
+                                title="Delete comment"
+                                className="ml-auto shrink-0 p-1 text-subtle opacity-0 transition-opacity hover:text-danger focus-visible:opacity-100 group-hover/comment:opacity-100 disabled:opacity-50"
+                              >
+                                {deletingId === comment.id ? (
+                                  <Loader2 size={12} className="animate-spin" />
+                                ) : (
+                                  <Trash2 size={12} />
+                                )}
+                              </button>
+                            )}
+                          </div>
+
+                          {comment.replyToId && (
+                            <p className="mt-0.5 flex items-center gap-1 text-[11px] text-subtle">
+                              <CornerDownRight size={10} className="shrink-0" />
+                              <span className="shrink-0">{comment.replyToSenderName}</span>
+                              <span className="truncate italic opacity-70">{comment.replyToContent}</span>
+                            </p>
+                          )}
+
+                          {comment.type === 'image' ? (
+                            <div className="mt-1 cursor-zoom-in space-y-1.5" onClick={() => setViewingImage(comment.imageUrl!)}>
+                              <img
+                                src={comment.imageUrl}
+                                alt="Comment attachment"
+                                className="w-full max-w-[220px] rounded-lg border border-line object-cover"
+                                loading="lazy" decoding="async" />
+                              {comment.content !== 'Sent an image' && (
+                                <p className="text-[13px] leading-snug text-fg break-words">{renderContent(comment.content)}</p>
+                              )}
+                            </div>
+                          ) : comment.type === 'voice' ? (
+                            <div className="mt-1 max-w-[260px]">
+                              <VoiceMessage url={comment.voiceUrl || ''} />
+                            </div>
+                          ) : (
+                            <p className="mt-0.5 text-[13px] leading-snug text-fg break-words">
+                              {renderContent(comment.content)}
+                            </p>
+                          )}
+
+                          {/* One compact action row — "♥ 2 · Reply" — echoing
+                              the post card's own action row. Previously the
+                              only affordance here was a bare smiley from the
+                              emoji picker, which read as decoration rather
+                              than as "like this". */}
+                          <div className="mt-1 flex items-center gap-2 text-[11px]">
+                            <button
+                              onClick={() => handleToggleLike(comment.id)}
+                              aria-pressed={likedByMe}
+                              aria-label={likedByMe ? 'Remove like' : 'Like comment'}
+                              className={cn(
+                                "flex items-center gap-1 rounded-full py-0.5 font-medium transition-colors",
+                                likedByMe ? "text-danger" : "text-subtle hover:text-fg"
+                              )}
+                            >
+                              <Heart size={13} className={cn(likedByMe && "fill-current")} />
+                              {hearts.length > 0 && <span className="tabular-nums">{hearts.length}</span>}
+                            </button>
+
+                            <span aria-hidden="true" className="text-subtle/50">·</span>
+
+                            <button
+                              onClick={() => setReplyingTo(comment)}
+                              className="font-medium text-subtle transition-colors hover:text-fg"
+                            >
+                              Reply
+                            </button>
+
+                            {otherReactions.length > 0 && (
+                              <span className="ml-1 flex items-center gap-1">
+                                {otherReactions.map(([emoji, uids]) => (
+                                  <button
+                                    key={emoji}
+                                    onClick={() => handleReactComment(comment.id, emoji)}
+                                    aria-pressed={uids.includes(user.uid)}
+                                    className={cn(
+                                      "flex items-center gap-0.5 rounded-full border px-1.5 py-0.5 transition-colors",
+                                      uids.includes(user.uid)
+                                        ? "border-accent/40 bg-accent/10 text-fg"
+                                        : "border-line text-muted hover:text-fg"
+                                    )}
+                                  >
+                                    <span>{emoji}</span>
+                                    <span className="tabular-nums">{uids.length}</span>
+                                  </button>
+                                ))}
+                              </span>
+                            )}
+                          </div>
+                        </div>
+                      </li>
+                    );
+                  })}
+                </ul>
               )}
             </>
           )}
         </div>
 
-        <div className="p-8 border-t border-line bg-black/20 shrink-0">
+        <div className="shrink-0 border-t border-line bg-black/20 px-4 py-3 sm:px-5">
+          {/* Was a full-width card repeating the target's name and the whole
+              text of the comment being replied to — a duplicate of the thread
+              already on screen a few pixels above. A chip is enough: it names
+              the target, and dismisses. */}
           <AnimatePresence>
             {replyingTo && (
-              <motion.div 
-                initial={{ opacity: 0, y: 10 }}
+              <motion.div
+                initial={{ opacity: 0, y: 4 }}
                 animate={{ opacity: 1, y: 0 }}
-                exit={{ opacity: 0, y: 10 }}
-                className="bg-accent/10 border border-accent/20 rounded-2xl p-4 mb-4 flex items-center justify-between"
+                exit={{ opacity: 0, y: 4 }}
+                className="mb-2 flex w-fit max-w-full items-center gap-1.5 rounded-full border border-accent/25 bg-accent/10 py-1 pl-2.5 pr-1 text-[11px]"
               >
-                <div className="flex-1 overflow-hidden">
-                  <span className="text-xs font-black uppercase tracking-widest text-accent block mb-1">Replying to {replyingTo.user?.displayName}</span>
-                  <p className="text-sm text-muted truncate italic">{replyingTo.content}</p>
-                </div>
-                <button onClick={() => setReplyingTo(null)} className="text-subtle hover:text-fg ml-4">
-                  <X size={16} />
+                <CornerDownRight size={11} className="shrink-0 text-accent" />
+                <span className="truncate text-muted">
+                  Replying to <span className="font-medium text-fg">{replyingTo.user?.displayName}</span>
+                </span>
+                <button
+                  onClick={() => setReplyingTo(null)}
+                  aria-label="Cancel reply"
+                  className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full text-subtle transition-colors hover:text-fg"
+                >
+                  <X size={12} />
                 </button>
               </motion.div>
             )}
           </AnimatePresence>
-          <div className="mb-4">
+          {/* No margin of its own — each child below carries its own spacing,
+              so this contributes nothing to the composer's height when there is
+              no attachment and no recording in progress. */}
+          <div>
             {pendingAttachment && (
               <motion.div 
                 initial={{ opacity: 0, scale: 0.95, y: 10 }}
                 animate={{ opacity: 1, scale: 1, y: 0 }}
-                className="bg-accent/10 border border-accent/20 p-4 rounded-3xl mb-4 space-y-4"
+                className="bg-accent/10 border border-accent/20 p-3 rounded-2xl mb-2 space-y-3"
               >
                 <div className="flex items-center justify-between">
                   <span className="text-xs font-black tracking-widest text-accent uppercase">Confirm {pendingAttachment.type}</span>
@@ -713,7 +817,7 @@ export function CommentsModal({ postId, postUserId, user, onClose, onUserClick }
             )}
 
             {isSendingImage && (
-              <div className="flex items-center gap-2 px-4 py-2 bg-accent/10 rounded-full w-fit animate-pulse">
+              <div className="mb-2 flex w-fit animate-pulse items-center gap-2 rounded-full bg-accent/10 px-3 py-1.5">
                 <Loader2 className="w-3 h-3 text-accent animate-spin" />
                 <span className="text-xs font-black uppercase tracking-widest text-accent">Sending Image...</span>
               </div>
@@ -725,7 +829,7 @@ export function CommentsModal({ postId, postUserId, user, onClose, onUserClick }
                   initial={{ opacity: 0, scale: 0.9, y: 10 }}
                   animate={{ opacity: 1, scale: 1, y: 0 }}
                   exit={{ opacity: 0, scale: 0.9, y: 10 }}
-                  className="flex items-center justify-between bg-danger/10 border border-danger/20 p-4 rounded-3xl mb-4"
+                  className="mb-2 flex items-center justify-between rounded-2xl border border-danger/20 bg-danger/10 p-3"
                 >
                   <div className="flex items-center gap-4">
                     <div className="w-3 h-3 rounded-full bg-danger animate-pulse" />
@@ -750,14 +854,14 @@ export function CommentsModal({ postId, postUserId, user, onClose, onUserClick }
             </AnimatePresence>
           </div>
 
-          <form onSubmit={handleSubmit} className="flex items-center gap-3 relative">
+          <form onSubmit={handleSubmit} className="relative flex items-center gap-2">
             <AnimatePresence>
               {showMentions && filteredMentionUsers.length > 0 && (
                 <motion.div
                   initial={{ opacity: 0, y: 10, scale: 0.95 }}
                   animate={{ opacity: 1, y: 0, scale: 1 }}
                   exit={{ opacity: 0, y: 10, scale: 0.95 }}
-                  className="absolute bottom-full left-0 right-0 z-[100] mb-4 glass border border-line rounded-2xl shadow-2xl overflow-hidden max-h-[300px] overflow-y-auto p-2 flex flex-col gap-1"
+                  className="absolute bottom-full left-0 right-0 z-[100] mb-2 glass border border-line rounded-2xl shadow-2xl overflow-hidden max-h-[300px] overflow-y-auto p-2 flex flex-col gap-1"
                 >
                   <div className="px-4 py-2 flex items-center justify-between border-b border-line mb-1">
                     <div className="flex items-center gap-2">
@@ -803,18 +907,18 @@ export function CommentsModal({ postId, postUserId, user, onClose, onUserClick }
                 onKeyDown={handleKeyDown}
                 placeholder={isRecording ? "Recording..." : "Add a comment..."}
                 disabled={isRecording || isSendingImage}
-                className="w-full h-14 bg-surface-2 border border-line rounded-full pl-6 pr-14 text-sm focus:outline-none focus:border-accent/50 focus:bg-surface-3 transition-colors placeholder:text-subtle disabled:opacity-50 shadow-inner"
+                className="h-11 w-full rounded-full border border-line bg-surface-2 pl-4 pr-12 text-sm transition-colors placeholder:text-subtle focus:border-accent/50 focus:bg-surface-3 focus:outline-none disabled:opacity-50"
               />
               <button
                 type="submit"
                 disabled={!newComment.trim() || isSubmitting || isRecording}
-                className="absolute right-1.5 top-1.5 w-11 h-11 rounded-full bg-accent text-white flex items-center justify-center disabled:opacity-20 active:scale-90 transition-colors shadow-lg"
+                className="absolute right-1 top-1 flex h-9 w-9 items-center justify-center rounded-full bg-accent text-white transition-colors active:scale-90 disabled:opacity-20"
               >
-                <Send size={18} className={cn(newComment.trim() && !isSubmitting ? "translate-x-0.5 -translate-y-0.5" : "")} />
+                <Send size={16} className={cn(newComment.trim() && !isSubmitting ? "translate-x-0.5 -translate-y-0.5" : "")} />
               </button>
             </div>
             
-            <div className="flex items-center gap-3">
+            <div className="flex items-center gap-2">
               <input 
                 type="file" 
                 ref={fileInputRef} 
@@ -826,9 +930,9 @@ export function CommentsModal({ postId, postUserId, user, onClose, onUserClick }
                 type="button"
                 onClick={() => fileInputRef.current?.click()}
                 disabled={isRecording || isSendingImage || isSubmitting}
-                className="w-[52px] h-[52px] rounded-full bg-surface-2 border border-line flex items-center justify-center text-muted hover:text-fg hover:border-line-strong transition-colors active:scale-90 disabled:opacity-20"
+                className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full border border-line bg-surface-2 text-muted transition-colors hover:border-line-strong hover:text-fg active:scale-90 disabled:opacity-20"
               >
-                <ImageIcon size={20} />
+                <ImageIcon size={18} />
               </button>
               
               <button
@@ -838,11 +942,11 @@ export function CommentsModal({ postId, postUserId, user, onClose, onUserClick }
                 onMouseLeave={cancelRecording}
                 disabled={isSendingImage || isSubmitting}
                 className={cn(
-                  "w-[52px] h-[52px] rounded-full flex items-center justify-center transition-colors active:scale-75 disabled:opacity-20",
-                  isRecording ? "bg-danger text-white shadow-lg scale-110" : "bg-surface-2 border border-line text-muted hover:text-fg hover:border-line-strong"
+                  "flex h-11 w-11 shrink-0 items-center justify-center rounded-full transition-colors active:scale-75 disabled:opacity-20",
+                  isRecording ? "scale-110 bg-danger text-white" : "border border-line bg-surface-2 text-muted hover:border-line-strong hover:text-fg"
                 )}
               >
-                <Mic size={20} />
+                <Mic size={18} />
               </button>
             </div>
           </form>

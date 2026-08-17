@@ -1,6 +1,6 @@
 import React, { useState, useRef, useEffect } from 'react';
 import YouTube, { YouTubeProps } from 'react-youtube';
-import { Play, Pause, Music, Volume2, VolumeX, Loader2 } from 'lucide-react';
+import { Play, Pause, Music, Volume2, VolumeX, Loader2, AlertCircle } from 'lucide-react';
 import { motion } from 'motion/react';
 import { ThemeSong } from '../types';
 import { cn } from '../lib/utils';
@@ -12,23 +12,77 @@ interface ThemeSongCardProps {
   onPlay?: () => void;
 }
 
+/** YouTube's numeric onError codes. Without this mapping the console showed
+ *  `{data: 150}` and the card showed nothing at all. */
+const YT_ERRORS: Record<number, string> = {
+  2: 'Invalid video ID',
+  5: 'The HTML5 player failed to load this video',
+  100: 'Video removed or private',
+  101: 'The owner disabled playback outside YouTube',
+  150: 'The owner disabled playback outside YouTube',
+};
+
+/** How long to wait for onReady before declaring the embed dead. The API script
+ *  and the iframe together are well under this on any working connection; past
+ *  it, something is blocking the embed (an extension, a proxy, a CSP rule) and
+ *  no amount of further waiting helps. */
+const INIT_TIMEOUT_MS = 8000;
+
 export function ThemeSongCard({ song, isOwnProfile, onPlay: onPlayProp }: ThemeSongCardProps) {
   const [isPlaying, setIsPlaying] = useState(false);
   const [isPlayerReady, setIsPlayerReady] = useState(false);
   const [isMuted, setIsMuted] = useState(false);
+  // Whatever actually went wrong, in words, shown on the card. The old code
+  // caught onError, set isPlayerReady(false) and said nothing — so a video with
+  // embedding disabled looked identical to one still loading, forever, and
+  // every click just re-toasted "Warming up the player…".
+  const [loadError, setLoadError] = useState<string | null>(null);
+  // Bumping this remounts <YouTube>, which is the only way to retry a failed
+  // embed: the underlying player is destroyed and rebuilt from scratch.
+  const [playerNonce, setPlayerNonce] = useState(0);
   const playerRef = useRef<any>(null);
   const { toast } = useToast();
-  const playerId = React.useMemo(() => `yt-player-${song.youtubeId}-${Math.random().toString(36).substr(2, 9)}`, [song.youtubeId]);
+  const playerId = React.useMemo(
+    () => `yt-player-${song.youtubeId}-${Math.random().toString(36).substr(2, 9)}`,
+    [song.youtubeId]
+  );
+
+  // If onReady has not fired by the deadline, stop pretending it is coming.
+  useEffect(() => {
+    if (isPlayerReady || loadError) return;
+    const timer = setTimeout(() => {
+      if (playerRef.current) return;
+      const detail = {
+        videoId: song.youtubeId,
+        origin: window.location.origin,
+        elapsedMs: INIT_TIMEOUT_MS,
+        hint: 'onReady never fired — the iframe API or the embed itself is being blocked. Check the Network tab for www.youtube.com/iframe_api and any CSP violation in the console.',
+      };
+      console.error('[ThemeSongCard] YouTube player failed to initialise', detail);
+      setLoadError("Player didn't load");
+    }, INIT_TIMEOUT_MS);
+    return () => clearTimeout(timer);
+  }, [isPlayerReady, loadError, song.youtubeId, playerNonce]);
 
   const onReady: YouTubeProps['onReady'] = (event) => {
     playerRef.current = event.target;
     setIsPlayerReady(true);
+    setLoadError(null);
     // Seek to start time
     try {
       event.target.seekTo(song.startTime || 0, true);
     } catch (e) {
       console.warn('Seek failed in onReady:', e);
     }
+  };
+
+  const retry = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    playerRef.current = null;
+    setIsPlayerReady(false);
+    setIsPlaying(false);
+    setLoadError(null);
+    setPlayerNonce((n) => n + 1);
   };
 
   const onStateChange: YouTubeProps['onStateChange'] = (event) => {
@@ -45,8 +99,15 @@ export function ThemeSongCard({ song, isOwnProfile, onPlay: onPlayProp }: ThemeS
     e.stopPropagation(); // Prevent bubbling if needed
     const player = playerRef.current;
 
+    if (loadError) {
+      retry(e);
+      return;
+    }
+
     if (!player) {
-      toast('Warming up the player...', 'info');
+      // Still inside the init window. Say so honestly rather than implying it
+      // is about to work — the timeout above will resolve this either way.
+      toast('Still loading the player…', 'info');
       return;
     }
 
@@ -59,11 +120,28 @@ export function ThemeSongCard({ song, isOwnProfile, onPlay: onPlayProp }: ThemeS
         player.unMute();
         player.setVolume(100);
         player.seekTo(song.startTime || 0, true);
+        // playVideo() is fire-and-forget: if the browser refuses the gesture
+        // or the video is unplayable, nothing throws and nothing happens. The
+        // state check confirms it actually started.
         player.playVideo();
+        setTimeout(() => {
+          const p = playerRef.current;
+          if (!p || typeof p.getPlayerState !== 'function') return;
+          const state = p.getPlayerState();
+          // -1 unstarted, 0 ended, 1 playing, 2 paused, 3 buffering, 5 cued.
+          if (state === -1 || state === 5) {
+            console.error('[ThemeSongCard] playVideo() had no effect', {
+              videoId: song.youtubeId,
+              playerState: state,
+              hint: 'The player is alive but refused to start — usually an unplayable video or a blocked autoplay gesture.',
+            });
+            setLoadError("Couldn't start playback");
+          }
+        }, 1500);
       }
     } catch (err) {
-      console.error('Play Toggle Error:', err);
-      toast('Reconnecting melody...', 'info');
+      console.error('[ThemeSongCard] Play toggle threw', { videoId: song.youtubeId, err });
+      setLoadError('Playback failed');
     }
   };
 
@@ -80,10 +158,16 @@ export function ThemeSongCard({ song, isOwnProfile, onPlay: onPlayProp }: ThemeS
     setIsMuted(!isMuted);
   };
 
-  // Stop video if component unmounts
+  // Stop the video when the card goes away.
+  //
+  // This read playerRef.current in the effect body, which runs at mount — when
+  // the ref is still null, since onReady has not fired yet. The cleanup then
+  // closed over that null and did nothing, so navigating away from a profile
+  // left the song playing from a component that no longer exists. Reading the
+  // ref inside the cleanup gets the player that exists at teardown.
   useEffect(() => {
-    const player = playerRef.current;
     return () => {
+      const player = playerRef.current;
       if (player && typeof player.stopVideo === 'function') {
         try {
           player.stopVideo();
@@ -108,6 +192,8 @@ export function ThemeSongCard({ song, isOwnProfile, onPlay: onPlayProp }: ThemeS
       <div className="absolute opacity-0 pointer-events-none overflow-hidden -z-50"
         style={{ width: '200px', height: '200px', top: -100, left: -100 }}>
         <YouTube
+          // Remounting on retry is what actually rebuilds a dead embed.
+          key={`${song.youtubeId}-${playerNonce}`}
           videoId={song.youtubeId}
           id={playerId}
           opts={{
@@ -126,7 +212,6 @@ export function ThemeSongCard({ song, isOwnProfile, onPlay: onPlayProp }: ThemeS
               fs: 0,
               origin: window.location.origin,
               widget_referrer: window.location.href,
-              host: 'https://www.youtube.com'
             },
           }}
           onReady={onReady}
@@ -134,8 +219,22 @@ export function ThemeSongCard({ song, isOwnProfile, onPlay: onPlayProp }: ThemeS
           onPlay={onPlay}
           onPause={onPause}
           onError={(e) => {
-            console.error('YouTube Player Error:', e);
+            // The code is the whole story here, and it was being thrown away:
+            // 101/150 means the owner disabled off-site playback, which no
+            // retry can fix, and the reader needs to be told rather than left
+            // watching a spinner.
+            const code = Number((e as any)?.data);
+            const reason = YT_ERRORS[code] ?? `Player error ${code}`;
+            console.error('[ThemeSongCard] YouTube player error', {
+              videoId: song.youtubeId,
+              code,
+              reason,
+              origin: window.location.origin,
+            });
+            playerRef.current = null;
             setIsPlayerReady(false);
+            setIsPlaying(false);
+            setLoadError(reason);
           }}
         />
       </div>
@@ -157,9 +256,11 @@ export function ThemeSongCard({ song, isOwnProfile, onPlay: onPlayProp }: ThemeS
           // Sits ON the surrounding card rather than beside it: a near
           // transparent fill instead of the solid surface-2 block, so it reads
           // as inline content.
-          isPlaying
-            ? "border-accent/30 bg-accent/[0.07]"
-            : "border-line/70 bg-white/[0.02] hover:bg-white/[0.04]"
+          loadError
+            ? "border-danger/30 bg-danger/[0.06]"
+            : isPlaying
+              ? "border-accent/30 bg-accent/[0.07]"
+              : "border-line/70 bg-white/[0.02] hover:bg-white/[0.04]"
         )}
       >
         {/* Cover, 36px. It is also the play control, which removes the need for
@@ -167,31 +268,39 @@ export function ThemeSongCard({ song, isOwnProfile, onPlay: onPlayProp }: ThemeS
         <button
           type="button"
           onClick={togglePlay}
-          aria-label={isPlaying ? `Pause ${song.title}` : `Play ${song.title}`}
+          aria-label={
+            loadError ? `Retry loading ${song.title}`
+            : isPlaying ? `Pause ${song.title}`
+            : `Play ${song.title}`
+          }
           className="relative shrink-0 rounded-lg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent"
         >
           <span className="flex h-9 w-9 items-center justify-center overflow-hidden rounded-lg bg-surface-3">
-            {isPlayerReady ? (
+            {isPlayerReady && !loadError ? (
               <img
                 src={song.coverUrl}
                 alt=""
                 className="h-full w-full object-cover"
                 referrerPolicy="no-referrer" loading="lazy" decoding="async"
               />
+            ) : loadError ? (
+              <AlertCircle size={15} className="text-danger" />
             ) : (
               <Loader2 size={14} className="animate-spin text-subtle" />
             )}
           </span>
-          <span className={cn(
-            "absolute inset-0 flex items-center justify-center rounded-lg bg-black/45 transition-opacity duration-100",
-            // Once playing, the cover art is more useful than the icon — the
-            // control only comes back on hover.
-            isPlaying && "opacity-0 group-hover:opacity-100"
-          )}>
-            {isPlaying
-              ? <Pause size={14} className="fill-current text-white" />
-              : <Play size={14} className="fill-current text-white" />}
-          </span>
+          {!loadError && (
+            <span className={cn(
+              "absolute inset-0 flex items-center justify-center rounded-lg bg-black/45 transition-opacity duration-100",
+              // Once playing, the cover art is more useful than the icon — the
+              // control only comes back on hover.
+              isPlaying && "opacity-0 group-hover:opacity-100"
+            )}>
+              {isPlaying
+                ? <Pause size={14} className="fill-current text-white" />
+                : <Play size={14} className="fill-current text-white" />}
+            </span>
+          )}
         </button>
 
         {/* Title is the anchor; artist supports it. The "MUSIC PROFILE" caption
@@ -204,11 +313,25 @@ export function ThemeSongCard({ song, isOwnProfile, onPlay: onPlayProp }: ThemeS
               {song.title}
             </span>
           </div>
-          {song.artist && (
+          {/* The failure replaces the artist line: same slot, no extra height,
+              and it names the actual cause instead of a spinner that never
+              resolves. */}
+          {loadError ? (
+            <p className="mt-0.5 flex items-center gap-1 truncate text-[11px] leading-tight text-danger">
+              <span className="truncate">{loadError}</span>
+              <button
+                type="button"
+                onClick={retry}
+                className="shrink-0 font-medium underline underline-offset-2 hover:text-fg"
+              >
+                Retry
+              </button>
+            </p>
+          ) : song.artist ? (
             <p className="mt-0.5 truncate text-[11px] leading-tight text-subtle">
               {song.artist}
             </p>
-          )}
+          ) : null}
         </div>
 
         {/* Mute is hover-revealed rather than permanently occupying space next
@@ -223,7 +346,8 @@ export function ThemeSongCard({ song, isOwnProfile, onPlay: onPlayProp }: ThemeS
             "flex h-7 w-7 shrink-0 items-center justify-center rounded-full text-subtle",
             "transition-opacity duration-100 hover:text-fg",
             "focus-visible:opacity-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent",
-            isPlaying ? "opacity-100" : "opacity-0 group-hover:opacity-100"
+            isPlaying ? "opacity-100" : "opacity-0 group-hover:opacity-100",
+            loadError && "hidden"
           )}
         >
           {isMuted ? <VolumeX size={13} /> : <Volume2 size={13} />}
