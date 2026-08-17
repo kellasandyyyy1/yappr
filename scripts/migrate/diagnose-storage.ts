@@ -86,12 +86,28 @@ const bad = (l: string, d = '') => { console.log(`  FAIL  ${l}${d ? ` — ${d}` 
     'base64'
   );
 
+  // The `chat` bucket is keyed on conversation, not uploader: its policy checks
+  // that the FIRST path segment is a conversation you belong to. An earlier
+  // version of this script probed it with `<uid>/…` and reported a policy
+  // failure that was really a wrong test — the app writes
+  // `<conversationId>/<uid>-<ts>`. A real conversation is created here so the
+  // probe exercises the same path shape the app does.
+  const { data: conv } = await admin
+    .from('conversations').insert({ type: 'direct', created_by: userId }).select('id').single();
+  if (conv) {
+    await admin.from('conversation_members')
+      .insert({ conversation_id: conv.id, user_id: userId, role: 'member' });
+  }
+
   for (const want of REQUIRED) {
     if (!existing.has(want.name)) {
       console.log(`  SKIP  upload to "${want.name}" — bucket does not exist`);
       continue;
     }
-    const objectPath = `${userId}/${stamp}-probe.png`;
+    const objectPath =
+      want.name === 'chat'
+        ? `${conv?.id}/${userId}-${stamp}.png`
+        : `${userId}/${stamp}-probe.png`;
     const { error: upErr } = await client.storage
       .from(want.name)
       .upload(objectPath, png, { contentType: 'image/png', upsert: true });
@@ -120,8 +136,12 @@ const bad = (l: string, d = '') => { console.log(`  FAIL  ${l}${d ? ` — ${d}` 
     }
   }
 
+  // The probe conversation must go too. Deleting the auth user does not remove
+  // it: conversations.created_by is ON DELETE SET NULL, not CASCADE, so an
+  // earlier version of this script left one orphaned thread behind per run.
+  if (conv) await admin.from('conversations').delete().eq('id', conv.id).then(() => {}, () => {});
   await admin.auth.admin.deleteUser(userId).catch(() => {});
-  console.log('\n  teardown: test account removed');
+  console.log('\n  teardown: test account and probe conversation removed');
 
   console.log('\n' + '─'.repeat(60));
   console.log(failures === 0 ? 'STORAGE OK' : `${failures} failure(s).`);
