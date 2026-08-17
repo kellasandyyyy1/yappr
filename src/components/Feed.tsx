@@ -49,20 +49,15 @@ function PostActions({ postId, initialLikes, initialComments, isLiked, onLike, o
     setLikesCount(initialLikes);
     setCommentsCount(initialComments);
 
-    const channel = supabase
-      .channel(`post-counts:${postId}`)
-      .on(
-        'postgres_changes',
-        { event: 'UPDATE', schema: 'public', table: 'posts', filter: `id=eq.${postId}` },
-        (payload) => {
-          const row = payload.new as { likes_count?: number; comments_count?: number };
-          if (typeof row.likes_count === 'number') setLikesCount(row.likes_count);
-          if (typeof row.comments_count === 'number') setCommentsCount(row.comments_count);
-        }
-      )
-      .subscribe();
-
-    return () => { void supabase.removeChannel(channel); };
+    // Was a hand-built supabase.channel() with a fixed topic. Two subscribers
+    // sharing a topic share the channel, and binding to one that has already
+    // been subscribed throws — which StrictMode's double-mount causes, and so
+    // does the same post appearing in the feed and a profile grid at once.
+    // subscribeToCounts() uses the unique-topic helper.
+    return postsApi.subscribeToCounts(postId, ({ likesCount, commentsCount }) => {
+      setLikesCount(likesCount);
+      setCommentsCount(commentsCount);
+    });
   }, [postId, initialLikes, initialComments]);
 
   // Every control below is >=44x44 via `tap`, with the count sitting inside

@@ -47,6 +47,8 @@ export function CommentsModal({ postId, postUserId, user, onClose, onUserClick }
   const [newComment, setNewComment] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [loading, setLoading] = useState(true);
+  // Distinguishes "the fetch failed" from "there are no comments".
+  const [loadError, setLoadError] = useState<string | null>(null);
   const [isSendingImage, setIsSendingImage] = useState(false);
   const [isRecording, setIsRecording] = useState(false);
   const [recordingTime, setRecordingTime] = useState(0);
@@ -102,8 +104,15 @@ export function CommentsModal({ postId, postUserId, user, onClose, onUserClick }
         const list = await commentsApi.list(postId);
         if (cancelled) return;
         setComments(list);
+        setLoadError(null);
       } catch (error) {
+        // A failed fetch is NOT an empty thread, and conflating them is what
+        // made a broken query look like missing data: the post card showed a
+        // comment count while the modal confidently reported none. Record the
+        // failure so the empty state is only ever shown for a thread that is
+        // genuinely empty.
         console.error('Error loading comments:', error);
+        if (!cancelled) setLoadError(error instanceof Error ? error.message : String(error));
       } finally {
         if (!cancelled) setLoading(false);
       }
@@ -547,8 +556,17 @@ export function CommentsModal({ postId, postUserId, user, onClose, onUserClick }
             </div>
           ) : (
             <>
-              {comments.length === 0 ? (
-                <div className="py-20 text-center">
+              {loadError ? (
+                /* Checked before the empty state. A failed fetch used to fall
+                   through to "No comments yet" — a confident claim about data
+                   that never arrived, and the reason a broken query read as
+                   missing content. */
+                <div className="mx-auto max-w-sm rounded-xl border border-danger/30 bg-danger/10 px-4 py-4 text-center">
+                  <p className="text-sm font-semibold text-danger">Couldn't load comments</p>
+                  <p className="mt-1.5 text-xs leading-relaxed text-danger/90">{loadError}</p>
+                </div>
+              ) : comments.length === 0 ? (
+                <div className="py-12 text-center">
                   <p className="text-subtle font-bold uppercase tracking-widest text-xs">No comments yet.</p>
                 </div>
               ) : (

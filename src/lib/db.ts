@@ -681,6 +681,37 @@ export const posts = {
     return data ? mapPost(data) : null;
   },
 
+  /**
+   * Live like/comment counts for one post.
+   *
+   * Both are trigger-maintained columns on `posts`, so a single row
+   * subscription keeps them current — including a decrement when a comment is
+   * deleted, which app-side counting misses whenever the deleting client is not
+   * the one displaying the card.
+   *
+   * Goes through changesChannel() rather than supabase.channel() directly:
+   * Feed built its own fixed-topic channel, which collides with itself under
+   * StrictMode's double-mount and whenever the same post is rendered twice —
+   * the feed and a profile grid, say. See the note on changesChannel.
+   */
+  subscribeToCounts(
+    postId: string,
+    onCounts: (counts: { likesCount: number; commentsCount: number }) => void
+  ): () => void {
+    const channel = changesChannel(`post-counts:${postId}`)
+      .on('postgres_changes',
+        { event: 'UPDATE', schema: 'public', table: 'posts', filter: `id=eq.${postId}` },
+        (payload) => {
+          const row = payload.new as { likes_count?: number; comments_count?: number };
+          onCounts({
+            likesCount: typeof row.likes_count === 'number' ? row.likes_count : 0,
+            commentsCount: typeof row.comments_count === 'number' ? row.comments_count : 0,
+          });
+        })
+      .subscribe();
+    return () => { void supabase.removeChannel(channel); };
+  },
+
   /** Any change to one author's posts — insert, edit, delete. A profile grid is
    *  small enough that refetching the page beats merging deltas by hand. */
   subscribeByUser(userId: string, onChange: () => void): () => void {
@@ -850,8 +881,23 @@ export const comments = {
   async list(postId: string): Promise<Comment[]> {
     const { data, error } = await supabase
       .from('comments')
+      // `users!comments_user_id_fkey`, not a bare `users`.
+      //
+      // There are TWO paths from comments to users — comments.user_id (the
+      // author) and comments → comment_reactions → users (whoever reacted).
+      // PostgREST refuses to choose and rejects the entire query:
+      //
+      //   PGRST201 Could not embed because more than one relationship was
+      //            found for 'comments' and 'users'
+      //
+      // Naming the foreign key resolves it. Until it was named, list() threw on
+      // every call, CommentsModal caught it and rendered its empty state, and
+      // every post read "No comments yet" while its comments_count — fetched
+      // from the post row by a different query — showed the real number. The
+      // mismatch looked like a broken counter or an RLS problem. It was neither:
+      // the rows were always there and always readable.
       .select(`id, post_id, user_id, content, type, image_url, voice_url, reply_to_id, created_at,
-               users(${USER_FIELDS}), comment_reactions(user_id, emoji)`)
+               users!comments_user_id_fkey(${USER_FIELDS}), comment_reactions(user_id, emoji)`)
       .eq('post_id', postId)
       .order('created_at', { ascending: false });
     if (error) throw error;
