@@ -139,6 +139,53 @@ export async function resolveStorageUrl(
   return data.signedUrl;
 }
 
+/**
+ * Turns a Storage failure into something a user and a developer can both act on.
+ *
+ * Storage errors are easy to misread. The SDK reports `status: 400` while the
+ * body carries `statusCode: "403"`, and every distinct cause — no bucket, no
+ * INSERT policy, file too large, disallowed MIME — arrives as a generic
+ * StorageApiError. Callers were catching that and showing "Couldn't share your
+ * post", which is true and useless.
+ *
+ * Storage RLS is a SEPARATE system from table RLS. Fixing policies on `posts`
+ * does nothing for `storage.objects`, and that distinction is invisible from
+ * the error text alone, so it is named here.
+ */
+export class UploadError extends Error {
+  constructor(
+    message: string,
+    readonly bucket: string,
+    readonly objectPath: string,
+    readonly cause: unknown
+  ) {
+    super(message);
+    this.name = 'UploadError';
+  }
+}
+
+function describeUploadFailure(bucket: string, error: any): string {
+  const raw = String(error?.message ?? '');
+  const code = error?.code ?? error?.statusCode ?? error?.status;
+
+  if (/row-level security|Unauthorized|AccessDenied/i.test(raw)) {
+    return `Uploads to "${bucket}" are not permitted for your account. The bucket exists but has no INSERT policy — Storage RLS is separate from table RLS. Apply supabase/migrations/0012_storage_policies.sql.`;
+  }
+  if (/Bucket not found|does not exist/i.test(raw)) {
+    return `The "${bucket}" storage bucket does not exist. Run: npx tsx scripts/migrate/create-storage-buckets.ts`;
+  }
+  if (/exceeded the maximum allowed size|Payload too large|413/i.test(raw) || code === 413) {
+    return `That file is too large for "${bucket}".`;
+  }
+  if (/mime type|not supported/i.test(raw)) {
+    return `That file type is not allowed in "${bucket}".`;
+  }
+  if (/Duplicate|already exists/i.test(raw)) {
+    return `An object already exists at that path in "${bucket}".`;
+  }
+  return `Upload to "${bucket}" failed: ${raw || 'unknown error'}`;
+}
+
 /** Uploads a file and returns the value to store in the database. */
 export async function uploadFile(
   bucket: 'avatars' | 'posts' | 'chat',
@@ -146,11 +193,30 @@ export async function uploadFile(
   file: Blob,
   contentType?: string
 ): Promise<string> {
+  const resolvedType = contentType ?? (file as File).type ?? 'application/octet-stream';
+
   const { error } = await supabase.storage.from(bucket).upload(objectPath, file, {
-    contentType: contentType ?? (file as File).type ?? 'application/octet-stream',
+    contentType: resolvedType,
     upsert: true,
   });
-  if (error) throw error;
+
+  if (error) {
+    const anyError = error as any;
+    // Everything the response carries, so the console never leaves you guessing
+    // which of the four causes it was.
+    console.error('[storage] upload failed', {
+      bucket,
+      objectPath,
+      contentType: resolvedType,
+      sizeBytes: file.size,
+      name: anyError?.name,
+      status: anyError?.status,
+      statusCode: anyError?.statusCode,
+      code: anyError?.code,
+      message: anyError?.message,
+    });
+    throw new UploadError(describeUploadFailure(bucket, anyError), bucket, objectPath, error);
+  }
 
   // Private buckets get the scheme form so reads go through resolveStorageUrl.
   if (bucket === 'chat') return `supabase://${bucket}/${objectPath}`;

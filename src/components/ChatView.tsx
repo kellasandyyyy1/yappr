@@ -207,6 +207,21 @@ export function ChatView({ user, onProfileClick, onUserClick, onChatOpenChange, 
   const timerRef = useRef<NodeJS.Timeout | null>(null);
   const typingTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
+  const scrollRef = useRef<HTMLDivElement>(null);
+
+  /**
+   * True when the user is close enough to the bottom that following a new
+   * message is what they would expect.
+   *
+   * The 120px tolerance matters: requiring an exact bottom means a few pixels
+   * of momentum scroll, or a bubble growing as an image decodes, silently turns
+   * auto-follow off and messages start arriving unseen.
+   */
+  const isNearBottom = React.useCallback(() => {
+    const el = scrollRef.current;
+    if (!el) return true; // nothing rendered yet — follow by default
+    return el.scrollHeight - el.scrollTop - el.clientHeight < 120;
+  }, []);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const isTypingRef = useRef(false);
   const typingChannelRef = useRef<ReturnType<typeof chatsApi.typingChannel> | null>(null);
@@ -276,7 +291,10 @@ export function ChatView({ user, onProfileClick, onUserClick, onChatOpenChange, 
         if (cancelled) return;
         setMessages(page.messages);
         setMessageCursor(page.nextCursor);
-        setTimeout(() => messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' }), 100);
+        // Instant on open, not smooth. Smooth animates the entire height of the
+        // history, so opening a long conversation visibly races from the oldest
+        // message to the newest.
+        setTimeout(() => messagesEndRef.current?.scrollIntoView({ block: 'end' }), 50);
       } catch (err) {
         console.error('Error loading messages:', err);
       }
@@ -286,8 +304,19 @@ export function ChatView({ user, onProfileClick, onUserClick, onChatOpenChange, 
     // handing it over — otherwise receipts and reactions would arrive empty.
     const unsubMessages = chatsApi.subscribeToMessages(conversationId, {
       onInsert: (message) => {
+        // Whether to follow the new message is decided BEFORE state updates,
+        // while the scroll position still reflects where the user was.
+        //
+        // Previously every arrival scrolled to the bottom unconditionally,
+        // which yanked you out of the history the moment anyone replied — the
+        // longer the conversation, the more disruptive. Now it only follows if
+        // you were already at the bottom; scrolled up, your position is left
+        // exactly where it was.
+        const pinned = isNearBottom();
         setMessages((prev) => (prev.some((m) => m.id === message.id) ? prev : [...prev, message]));
-        setTimeout(() => messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' }), 100);
+        if (pinned) {
+          setTimeout(() => messagesEndRef.current?.scrollIntoView({ behavior: 'smooth', block: 'end' }), 60);
+        }
       },
       onDelete: (id) => setMessages((prev) => prev.filter((m) => m.id !== id)),
     });
@@ -907,7 +936,7 @@ export function ChatView({ user, onProfileClick, onUserClick, onChatOpenChange, 
           {/* Compact rhythm: 12px between date groups, 2px between consecutive
               bubbles. Was 24px everywhere, which turned a short exchange into a
               mostly-empty column. */}
-          <div className="min-h-0 flex-1 space-y-3 overflow-y-auto pr-1 pt-2 scrollbar-hide">
+          <div ref={scrollRef} className="min-h-0 flex-1 space-y-3 overflow-y-auto pr-1 pt-2 scrollbar-hide">
             {messageCursor && (
               <div className="flex justify-center">
                 <button

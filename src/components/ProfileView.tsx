@@ -6,7 +6,7 @@ import {
   follows as followsApi,
   songs as songsApi,
 } from '../lib/db';
-import { uploadFile } from '../lib/supabase';
+import { uploadFile, UploadError } from '../lib/supabase';
 import { User, Post } from '../types';
 import { motion, AnimatePresence } from 'motion/react';
 import { LogOut, Grid, List, Layers, AtSign, X, Trash2, Camera, User as UserIcon, AlignLeft, Loader2, ChevronLeft, ChevronRight, Heart, MessageCircle, QrCode, Download, Music, ShieldCheck, FileText } from 'lucide-react';
@@ -220,7 +220,7 @@ export function ProfileView({ user: currentUser, profileUserId, onLogout, onBack
       setImagePreview(null);
       toast('Profile updated successfully', 'success');
     } catch (err) {
-      toast('Failed to update profile', 'error');
+      toast(err instanceof UploadError ? err.message : 'Failed to update profile', 'error');
       console.error('Error updating profile:', err);
     } finally {
       setIsSaving(false);

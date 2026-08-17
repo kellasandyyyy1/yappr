@@ -6,7 +6,7 @@ import {
   songs as songsApi,
   notifications as notificationsApi,
 } from '../lib/db';
-import { uploadFile } from '../lib/supabase';
+import { uploadFile, UploadError } from '../lib/supabase';
 import { User, ThemeSong, PostVisibility } from '../types';
 import { motion, AnimatePresence } from 'motion/react';
 import { X, Image as ImageIcon, Loader2, Mic, Square, Trash2, AtSign, Music, Globe, Users as UsersIcon, Lock, Check, ChevronDown } from 'lucide-react';
@@ -210,7 +210,9 @@ export function CreatePostModal({ user, onClose, onSuccess }: CreatePostModalPro
       toast('Post shared', 'success');
       setTimeout(onSuccess, 650);
     } catch (err) {
-      toast("Couldn't share your post", 'error');
+      // An UploadError already names the real cause (missing Storage policy,
+      // file too large, wrong MIME); showing it beats a generic failure.
+      toast(err instanceof UploadError ? err.message : "Couldn't share your post", 'error');
       console.error('Error creating post:', err);
     } finally {
       setIsPosting(false);

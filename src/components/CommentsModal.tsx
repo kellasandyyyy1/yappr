@@ -8,7 +8,7 @@ import {
   users as usersApi,
   notifications as notificationsApi,
 } from '../lib/db';
-import { uploadFile } from '../lib/supabase';
+import { uploadFile, UploadError } from '../lib/supabase';
 import { User, Comment, Post } from '../types';
 import { motion, AnimatePresence } from 'motion/react';
 import { X, Send, MessageSquare, Mic, Image as ImageIcon, Loader2, Play, Pause, Square, Volume2, Trash2, AtSign, Heart, Grid } from 'lucide-react';
@@ -353,7 +353,7 @@ export function CommentsModal({ postId, postUserId, user, onClose, onUserClick }
       setReplyingTo(null);
       toast('Attachment shared', 'success');
     } catch (err) {
-      toast('Failed to share attachment', 'error');
+      toast(err instanceof UploadError ? err.message : 'Failed to share attachment', 'error');
       console.error('Error sharing attachment:', err);
     } finally {
       setIsSubmitting(false);
