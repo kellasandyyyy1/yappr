@@ -677,12 +677,12 @@ export function AuthView({ onAuthSuccess, notice, onDismissNotice }: AuthViewPro
         <p className="mt-6 text-center text-sm text-muted">
           Developed by{' '}
           <a
-            href="https://kellasandrei.netlify.app"
+            href="https://seb.kelas.site"
             target="_blank"
             rel="noopener noreferrer"
             className="font-semibold text-accent transition-colors duration-100 hover:text-accent-soft hover:underline"
           >
-            andrei
+            seb
           </a>
         </p>
       </div>
