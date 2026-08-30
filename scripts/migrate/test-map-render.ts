@@ -157,6 +157,53 @@ offenders.length === 0
   ? ok('no error surface uses the String(err) idiom')
   : bad('no error surface uses the String(err) idiom', offenders.join(', '));
 
+// --- 4. The counts on screen -------------------------------------------------
+console.log('\n4. Counts come from one place');
+
+const view = fs.readFileSync('src/components/MapView.tsx', 'utf8').replace(/\r\n/g, '\n');
+
+// The chip beside a space name read {s.members.length}. Next to a space
+// name a bare number reads as a pin count, so a space with two members and
+// one pin showed "2" beside a map saying "1 pin" — two numbers from two
+// queries, which is the shape of the earlier comment-count bug.
+!view.includes('<span className="text-subtle">{s.members.length}</span>')
+  ? ok('the chip does not show the member count')
+  : bad('the chip does not show the member count', 'members and pins will disagree');
+
+view.includes('const pinsPerSpace = (pins ?? []).reduce')
+  ? ok('pin counts are derived from the pins array', 'the same one the map draws')
+  : bad('pin counts are derived from the pins array');
+
+view.includes('pinsPerSpace.get(s.id) ?? 0')
+  ? ok('the chip reads that derivation')
+  : bad('the chip reads that derivation');
+
+// Derived, not fetched: a second query for the same fact is what drifts.
+!/from\('pins'\)[\s\S]{0,200}count:/.test(view)
+  ? ok('no separate count query', 'one fetch, two readings of it')
+  : bad('no separate count query');
+
+// The member count was the only thing that number ever meant, so it stays
+// somewhere rather than being silently dropped.
+view.includes('member(s)')
+  ? ok('the member count survives in the label')
+  : bad('the member count survives in the label');
+
+// visiblePins is (pins ?? []), so a null pins reads as zero. Gating the
+// text on `spaces` alone stated "0 pins in X" while pins were in flight.
+view.includes('{spaces === null || pins === null')
+  ? ok('the header waits for pins', 'not just for spaces')
+  : bad('the header waits for pins');
+
+view.includes('spaces !== null && pins !== null && spaces.length > 0')
+  ? ok('the empty state waits for pins', '"no pins" is a fact, not a loading state')
+  : bad('the empty state waits for pins');
+
+// The chip prints nothing rather than 0 until the pins land.
+view.includes('{pins !== null && (')
+  ? ok('the chip shows no number while loading')
+  : bad('the chip shows no number while loading');
+
 console.log('\n' + '─'.repeat(60));
 console.log(failures === 0 ? 'MAP RENDER OK' : `${failures} failure(s).`);
 process.exit(failures === 0 ? 0 : 1);

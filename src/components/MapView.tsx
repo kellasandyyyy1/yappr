@@ -164,6 +164,20 @@ export function MapView({ user, onUserClick }: MapViewProps) {
   };
 
   const visiblePins = (pins ?? []).filter((p) => !activeSpaceId || p.spaceId === activeSpaceId);
+
+  /**
+   * Pins per space, counted off the same array the map draws.
+   *
+   * The chip used to show members.length, which is a different number from
+   * a different query, and beside a space name it reads as a pin count: a
+   * space with two members and one pin showed "2" next to a map saying
+   * "1 pin". Derived rather than fetched, so the chip and the map cannot
+   * disagree — there is only one number now.
+   */
+  const pinsPerSpace = (pins ?? []).reduce<Map<string, number>>(
+    (acc, pin) => acc.set(pin.spaceId, (acc.get(pin.spaceId) ?? 0) + 1),
+    new Map()
+  );
   const activeSpace = (spaces ?? []).find((s) => s.id === activeSpaceId) ?? null;
   const spaceOf = (id: string) => (spaces ?? []).find((s) => s.id === id) ?? null;
 
@@ -185,7 +199,10 @@ export function MapView({ user, onUserClick }: MapViewProps) {
         <div className="min-w-0">
           <h1 className="text-lg font-bold text-fg">Map</h1>
           <p className="truncate text-xs text-muted">
-            {spaces === null
+            {/* pins is a separate request from spaces. Gating a pins-derived
+                number on whether SPACES arrived is what let this state
+                "0 pins" as fact while the pin query was still in flight. */}
+            {spaces === null || pins === null
               ? 'Loading…'
               : spaces.length === 0
                 ? 'No spaces yet'
@@ -241,6 +258,7 @@ export function MapView({ user, onUserClick }: MapViewProps) {
             <button
               key={s.id}
               onClick={() => setActiveSpaceId(s.id === activeSpaceId ? null : s.id)}
+              title={`${s.name} — ${pinsPerSpace.get(s.id) ?? 0} pin(s), ${s.members.length} member(s)`}
               className={cn(
                 'flex h-8 shrink-0 items-center gap-1.5 rounded-full border px-3 text-xs font-medium transition-colors',
                 s.id === activeSpaceId ? 'border-accent bg-accent/15 text-fg' : 'border-line text-muted hover:text-fg'
@@ -252,7 +270,11 @@ export function MapView({ user, onUserClick }: MapViewProps) {
                 style={{ background: colorOf.get(s.id) }}
               />
               {s.name}
-              <span className="text-subtle">{s.members.length}</span>
+              {/* Blank until the pins are in. A "0" while they are still
+                  loading is a claim about the space, and the wrong one. */}
+              {pins !== null && (
+                <span className="text-subtle">{pinsPerSpace.get(s.id) ?? 0}</span>
+              )}
             </button>
           ))}
         </div>
@@ -310,7 +332,10 @@ export function MapView({ user, onUserClick }: MapViewProps) {
         />
       )}
 
-      {spaces !== null && spaces.length > 0 && visiblePins.length === 0 && !error && (
+      {/* pins !== null matters: without it this said "No pins in X yet" during
+          the load, which is a statement about the space rather than about the
+          request that has not come back. */}
+      {spaces !== null && pins !== null && spaces.length > 0 && visiblePins.length === 0 && !error && (
         <p className="text-center text-sm text-muted">
           {activeSpace ? `No pins in ${activeSpace.name} yet.` : 'No pins yet. Drop one to remember a place.'}
         </p>
