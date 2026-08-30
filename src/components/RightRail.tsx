@@ -4,7 +4,6 @@ import { User } from '../types';
 import { Avatar } from './Avatar';
 import { Skeleton } from './Skeleton';
 import { cn } from '../lib/utils';
-import { navigate } from '../lib/router';
 
 interface RightRailProps {
   user: User;
@@ -166,21 +165,10 @@ export function RightRail({ user, onUserClick, onProfileClick }: RightRailProps)
         </section>
 
         <footer className="px-2 text-xs leading-relaxed text-muted">
-          <nav className="flex flex-wrap gap-x-3 gap-y-1">
-            <button
-              onClick={() => navigate('/privacy-policy')}
-              className="hover:text-accent hover:underline"
-            >
-              Privacy Policy
-            </button>
-            <button
-              onClick={() => navigate('/terms-of-conditions')}
-              className="hover:text-accent hover:underline"
-            >
-              Terms
-            </button>
-          </nav>
-          <p className="mt-2 text-subtle">
+          {/* The Privacy Policy and Terms links are switched off with the
+              rest of the consent surfaces. The pages are still routed at
+              /privacy-policy and /terms-of-conditions. */}
+          <p className="text-subtle">
             Developed by{' '}
             <a
               href="https://kellasandrei.netlify.app"

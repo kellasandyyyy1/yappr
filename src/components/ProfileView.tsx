@@ -9,8 +9,7 @@ import {
 import { uploadFile, UploadError } from '../lib/supabase';
 import { User, Post } from '../types';
 import { motion, AnimatePresence } from 'motion/react';
-import { LogOut, Grid, List, Layers, AtSign, X, Trash2, Camera, User as UserIcon, AlignLeft, Loader2, ChevronLeft, ChevronRight, Heart, MessageCircle, QrCode, Download, Music, ShieldCheck, FileText, Plus } from 'lucide-react';
-import { navigate } from '../lib/router';
+import { LogOut, Grid, List, Layers, AtSign, X, Trash2, Camera, User as UserIcon, AlignLeft, Loader2, ChevronLeft, ChevronRight, Heart, MessageCircle, QrCode, Download, Music, Plus } from 'lucide-react';
 import { cn, formatTimeAgo } from '../lib/utils';
 import { UsersListModal } from './UsersListModal';
 import { Avatar } from './Avatar';
@@ -917,40 +916,11 @@ export function ProfileView({ user: currentUser, profileUserId, onLogout, onBack
         </ul>
       )}
 
-      {/* Legal links, reachable from inside the app on every screen size —
-          the desktop right rail is hidden on mobile and on this view. */}
-      {isOwnProfile && (
-        <footer className="mt-4 border-t border-line pt-5">
-          <h3 className="mb-3 text-sm font-semibold text-muted">About</h3>
-          <nav className="flex flex-col gap-1">
-            <button
-              onClick={() => navigate('/privacy-policy')}
-              className="flex items-center justify-between rounded-xl px-3 py-2.5 text-left text-[15px] text-fg transition-colors duration-100 hover:bg-surface-2"
-            >
-              <span className="flex items-center gap-3">
-                <ShieldCheck size={17} className="text-muted" />
-                Privacy Policy
-              </span>
-              <ChevronRight size={16} className="text-muted" />
-            </button>
-            <button
-              onClick={() => navigate('/terms-of-conditions')}
-              className="flex items-center justify-between rounded-xl px-3 py-2.5 text-left text-[15px] text-fg transition-colors duration-100 hover:bg-surface-2"
-            >
-              <span className="flex items-center gap-3">
-                <FileText size={17} className="text-muted" />
-                Terms of Conditions
-              </span>
-              <ChevronRight size={16} className="text-muted" />
-            </button>
-          </nav>
-          {currentUser.termsVersion && (
-            <p className="mt-3 px-3 text-xs text-subtle">
-              You accepted version {currentUser.termsVersion}.
-            </p>
-          )}
-        </footer>
-      )}
+      {/* The "About" footer — Privacy Policy and Terms links, plus the
+          "You accepted version N" line — is switched off along with the
+          consent gates. The documents are still served and still routed at
+          /privacy-policy and /terms-of-conditions; nothing links to them from
+          inside the app for now. */}
 
       <AnimatePresence>
         {viewingPost && (
