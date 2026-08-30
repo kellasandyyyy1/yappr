@@ -130,6 +130,43 @@ const bad = (l: string, d = '') => { console.log(`  FAIL  ${l}${d ? ` — ${d}` 
       ? ok('a member can see the member list', `${memberRows.length} members`)
       : bad('a member can see the member list', `${memberRows?.length} rows`);
 
+    // --- The place name (0020) ----------------------------------------------
+    // AFTER the visibility count above, not before: these inserts add pins to
+    // the space, and section 3 asserts an exact total.
+    // Two fields, read differently: the name is the heading, the caption is the
+    // note under it. The detail card falls back name -> caption -> "A place",
+    // so a null name must stay legal.
+    console.log('\nPlace name:');
+    const { data: named, error: namedErr } = await alice.client
+      .from('pins')
+      .insert({
+        space_id: space.id, creator_id: alice.id, latitude: 51.51, longitude: -0.13,
+        name: 'Where we watched the fireworks', caption: 'freezing, worth it',
+      })
+      .select('id, name, caption')
+      .single();
+    if (namedErr) bad('a pin carries a name and a caption', namedErr.code + ' ' + namedErr.message);
+    else {
+      named.name === 'Where we watched the fireworks' && named.caption === 'freezing, worth it'
+        ? ok('a pin carries a name and a caption', named.name)
+        : bad('a pin carries a name and a caption', JSON.stringify(named));
+    }
+
+    const { error: longErr } = await alice.client.from('pins').insert({
+      space_id: space.id, creator_id: alice.id, latitude: 51.52, longitude: -0.14,
+      name: 'x'.repeat(81),
+    });
+    longErr
+      ? ok('an 81-character name is refused', longErr.code)
+      : bad('an 81-character name is refused', 'the constraint is not applying');
+
+    const { error: nullNameErr } = await alice.client.from('pins').insert({
+      space_id: space.id, creator_id: alice.id, latitude: 51.53, longitude: -0.15,
+    });
+    nullNameErr
+      ? bad('a nameless pin is still legal', nullNameErr.message)
+      : ok('a nameless pin is still legal', 'the card falls back to the caption');
+
     // --- 4. A non-member sees nothing at all ---------------------------------
     console.log('\n4. Isolation — carol is in no space');
     const { data: carolSpaces } = await carol.client.from('map_spaces').select('id').eq('id', space.id);
