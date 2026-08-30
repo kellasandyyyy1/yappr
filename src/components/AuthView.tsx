@@ -30,7 +30,6 @@ import { pendingTotpChallenge, resolveTotpChallenge, abandonTotpChallenge } from
 import { handlePostSignIn } from '../lib/securityEvents';
 import { CaptchaGate } from './CaptchaGate';
 import { PasswordStrengthMeter } from './PasswordStrengthMeter';
-import { fetchLegalManifest } from '../lib/legal';
 import { navigate } from '../lib/router';
 
 interface AuthViewProps {
@@ -68,16 +67,7 @@ export function AuthView({ onAuthSuccess, notice, onDismissNotice }: AuthViewPro
   const [passwordCheck, setPasswordCheck] = useState<PasswordCheck | null>(null);
   const [checkingBreach, setCheckingBreach] = useState(false);
 
-  // Legal consent. Starts false and is never pre-checked — a pre-ticked box
-  // is not consent under GDPR or any comparable regime.
-  const [agreedToTerms, setAgreedToTerms] = useState(false);
-  const [legalVersion, setLegalVersion] = useState('');
 
-  useEffect(() => {
-    fetchLegalManifest().then((manifest) => {
-      if (manifest) setLegalVersion(manifest.version);
-    });
-  }, []);
 
   const refreshThrottle = useCallback((raw: string) => {
     setThrottle(getThrottleState(parseEmail(raw).value));
@@ -178,11 +168,6 @@ export function AuthView({ onAuthSuccess, notice, onDismissNotice }: AuthViewPro
         toast('Welcome back', 'success');
       } else {
         // Consent is a hard precondition for account creation.
-        if (!agreedToTerms) {
-          setError('Please accept the Terms and Privacy Policy to create an account.');
-          setLoading(false);
-          return;
-        }
 
         // Username, checked BEFORE the account is created.
         //
@@ -219,7 +204,6 @@ export function AuthView({ onAuthSuccess, notice, onDismissNotice }: AuthViewPro
         const { user: created, session } = await authApi.signUp(parsed.value, password, {
           username: handle,
           displayName: username,
-          termsVersion: legalVersion,
         });
 
         recordSuccess(parsed.value);
@@ -301,7 +285,7 @@ export function AuthView({ onAuthSuccess, notice, onDismissNotice }: AuthViewPro
   };
 
   const signupBlocked =
-    !isLogin && (!passwordCheck?.ok || !username.trim() || !agreedToTerms);
+    !isLogin && (!passwordCheck?.ok || !username.trim());
   const submitDisabled =
     loading || checkingBreach || !throttle.allowed || signupBlocked ||
     (throttle.captchaRequired && !captchaToken);
@@ -587,38 +571,6 @@ export function AuthView({ onAuthSuccess, notice, onDismissNotice }: AuthViewPro
                   onReset={() => setCaptchaToken(null)}
                 />
               </div>
-            )}
-
-            {/* Explicit, unticked consent. Required before account creation. */}
-            {!isLogin && (
-              <label className="mt-5 flex cursor-pointer items-start gap-3">
-                <input
-                  type="checkbox"
-                  checked={agreedToTerms}
-                  onChange={(e) => setAgreedToTerms(e.target.checked)}
-                  aria-describedby="terms-consent-text"
-                  className="mt-0.5 h-5 w-5 shrink-0 cursor-pointer accent-[#3b82f6]"
-                />
-                <span id="terms-consent-text" className="text-sm leading-relaxed text-muted">
-                  I agree to the{' '}
-                  <button
-                    type="button"
-                    onClick={() => navigate('/terms-of-conditions')}
-                    className="font-semibold text-accent underline underline-offset-2 hover:text-accent-soft"
-                  >
-                    Terms of Conditions
-                  </button>{' '}
-                  and{' '}
-                  <button
-                    type="button"
-                    onClick={() => navigate('/privacy-policy')}
-                    className="font-semibold text-accent underline underline-offset-2 hover:text-accent-soft"
-                  >
-                    Privacy Policy
-                  </button>
-                  .
-                </span>
-              </label>
             )}
 
             <button

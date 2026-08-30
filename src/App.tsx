@@ -24,10 +24,8 @@ import { ToastProvider } from './components/ToastContext';
 import { motion, AnimatePresence } from 'motion/react';
 import { cn } from './lib/utils';
 import { LegalPage } from './components/LegalPage';
-import { LegalConsentModal } from './components/LegalConsentModal';
 import { ResetPasswordView } from './components/ResetPasswordView';
 import { usePathname, isPublicRoute, normalizePath, navigate } from './lib/router';
-import { fetchLegalManifest, needsReconsent } from './lib/legal';
 import { parseProfileQr } from './lib/brand';
 
 export default function App() {
@@ -61,31 +59,11 @@ export default function App() {
   const [scannedUserId, setScannedUserId] = useState<string | null>(null);
   const [targetChatUserId, setTargetChatUserId] = useState<string | null>(null);
 
-  // Legal routing + consent state
+  // Legal routing. The consent gate is switched off for now — the pages
+  // themselves are still routed and reachable, and nothing about the
+  // schema changed, so re-enabling it is a matter of restoring the modal
+  // and the needsReconsent() check.
   const pathname = usePathname();
-  const [legalVersion, setLegalVersion] = useState('');
-  const [legalUpdated, setLegalUpdated] = useState('');
-
-  const [consentPrompt, setConsentPrompt] = useState(false);
-
-  useEffect(() => {
-    fetchLegalManifest().then((manifest) => {
-      if (!manifest) return; // fail open — never gate on a failed fetch
-      setLegalVersion(manifest.version);
-      setLegalUpdated(manifest.lastUpdated);
-    });
-  }, []);
-
-  // Latch the prompt open rather than deriving visibility from `user` on every
-  // render. Firestore applies writes locally before the server confirms them,
-  // so a derived condition flips false the instant Accept is clicked — which
-  // unmounts the modal and throws away its error state — and then flips back
-  // true when a rejected write is rolled back. The result is a modal that
-  // silently reappears with the checkbox cleared and no explanation.
-  // Only a server-confirmed acceptance clears this.
-  useEffect(() => {
-    if (needsReconsent(user, legalVersion)) setConsentPrompt(true);
-  }, [user, legalVersion]);
 
   const handleScan = (data: string) => {
     // Accepts both the new `yappr:profile:` prefix and the legacy `privy:`
@@ -320,21 +298,6 @@ export default function App() {
       <div className="min-h-screen bg-bg text-fg">
         <PresenceTracker userId={user.uid} />
         <InstallPrompt />
-
-        {/* Material change to the documents: block the app until the user
-            makes an explicit, recorded decision. */}
-        {consentPrompt && (
-          <LegalConsentModal
-            uid={user.uid}
-            version={legalVersion}
-            lastUpdated={legalUpdated}
-            onAccepted={() => {
-              setConsentPrompt(false);
-              setUser({ ...user, termsVersion: legalVersion });
-            }}
-            onDecline={() => auth.signOut()}
-          />
-        )}
 
         {/* Tablet & desktop: persistent left navigation. */}
         <Sidebar
