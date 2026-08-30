@@ -112,13 +112,55 @@ console.log('\n3. Locket detail card');
   ? ok('the "added Xs ago" attribution is kept')
   : bad('the attribution is kept');
 
-/max-h-\[340px\]/.test(mapView)
-  ? ok('media stays capped at 340px')
-  : bad('media stays capped at 340px');
+// Video keeps a height cap. Photos no longer need one — they are cropped to a
+// fixed banner, which caps them by construction.
+/max-h-\[240px\]/.test(mapView)
+  ? ok('video stays height-capped', '240px')
+  : bad('video stays height-capped');
 
 /className="h-32"/.test(mapView)
   ? ok('the mini-map is still 128px and last')
   : bad('the mini-map is still 128px');
+
+// The name printed twice — once in the title bar, once as the heading — after
+// it moved into the body and was left in the header too.
+{
+  const titleIsName = /title={openPin.name/.test(mapView);
+  titleIsName
+    ? bad('the name is not printed twice', 'the title bar repeats the heading')
+    : ok('the name is not printed twice', 'title bar carries the space instead');
+}
+
+/id="pin-detail" className="truncate text-xl/.test(mapView)
+  ? ok('the heading labels the dialog', 'aria-labelledby points at it')
+  : bad('the heading labels the dialog');
+
+// Banner crop, not letterbox.
+/h-\[150px\] w-full overflow-hidden/.test(mapView) && /object-cover/.test(mapView)
+  ? ok('photos are cropped to a banner', '150px, object-cover')
+  : bad('photos are cropped to a banner');
+
+/max-h-\[340px\] w-auto max-w-full cursor-zoom-in object-contain/.test(mapView)
+  ? bad('the letterboxed photo is gone', 'object-contain is still there')
+  : ok('the letterboxed photo is gone');
+
+/Tap to expand/.test(mapView)
+  ? ok('the crop says the full image is a tap away')
+  : bad('the crop says the full image is a tap away');
+
+// Songs belong to the content group at the top, not a block above the map.
+{
+  const contentIdx = mapView.indexOf('content of the memory');
+  const songIdx = mapView.indexOf('<ThemeSongCard');
+  const mapIdx = mapView.indexOf('The map, last and small');
+  contentIdx !== -1 && songIdx > contentIdx && songIdx < mapIdx
+    ? ok('the song sits in the top content group', 'above the map, under the photos')
+    : bad('the song sits in the top content group');
+}
+
+/ThemeSongCard\s+className="max-w-none"/.test(mapView)
+  ? ok('the song chip spans the card', 'aligned with the banner')
+  : bad('the song chip spans the card', 'the 340px feed cap would misalign it');
 
 // --- 4. Overlap, measured ----------------------------------------------------
 console.log('\n4. How close is too close');

@@ -296,13 +296,13 @@ export function MapView({ user, onUserClick }: MapViewProps) {
       <AnimatePresence>
         {openPin && (
           <Modal onClose={() => setOpenPin(null)} size="lg" labelledBy="pin-detail" className="sm:h-[80vh]">
-            {/* The header carries only the controls. The name is the first
-                thing in the body instead, where it can be large and warm
-                rather than squeezed into a title bar beside two icons. */}
+            {/* The bar carries the SPACE; the pin's own name is the heading
+                in the body. Both showed the name before, which printed it
+                twice, one above the other. The body keeps it because that is
+                where it can be large and sit beside the picture. */}
             <ModalHeader
-              title={openPin.name || openPin.caption || 'Pin'}
+              title={spaceOf(openPin.spaceId)?.name ?? 'Space'}
               onClose={() => setOpenPin(null)}
-              id="pin-detail"
             >
               {/* A member removes their own pin; the space owner can remove
                   any. RLS enforces both — this only mirrors it. */}
@@ -346,7 +346,7 @@ export function MapView({ user, onUserClick }: MapViewProps) {
                 })()}
 
                 <div className="min-w-0 flex-1">
-                  <h2 className="truncate text-xl font-bold leading-tight text-fg">
+                  <h2 id="pin-detail" className="truncate text-xl font-bold leading-tight text-fg">
                     {openPin.name || openPin.caption || 'A place'}
                   </h2>
                   {/* Reverse-geocoded where it resolves, coordinates where it
@@ -356,9 +356,6 @@ export function MapView({ user, onUserClick }: MapViewProps) {
                     <span className="truncate">
                       {placeName ?? `${openPin.latitude.toFixed(4)}, ${openPin.longitude.toFixed(4)}`}
                     </span>
-                  </p>
-                  <p className="mt-0.5 truncate text-xs text-subtle">
-                    {spaceOf(openPin.spaceId)?.name ?? 'Space'}
                   </p>
                 </div>
               </div>
@@ -384,50 +381,70 @@ export function MapView({ user, onUserClick }: MapViewProps) {
                 </p>
               )}
 
-              {/* 4. Media, capped so it cannot swallow the card. A photo is
-                  contained rather than cropped — a memory should not lose its
-                  edges to fit a box — and the letterboxing sits on a dark
-                  ground so it reads as deliberate. */}
+              {/* The content of the memory: pictures first, then anything
+                  playable, grouped together directly under the header.
+
+                  Photos are cropped to a 150px banner rather than letterboxed
+                  at full height. A poster or a portrait shot was previously
+                  340px of card with black bars either side, which made the
+                  image the whole view; a banner reads as part of the card and
+                  leaves room for everything below it. Tapping still opens the
+                  uncropped original, so nothing is lost — only deferred. */}
               {resolved === null ? (
                 <div className="flex justify-center py-6">
                   <Loader2 size={18} className="animate-spin text-subtle" />
                 </div>
               ) : resolved.length === 0 ? null : (
                 <div className="space-y-2">
-                  {resolved.map((m) => (
+                  {/* Pictures and video, in attachment order. */}
+                  {resolved.filter((m) => m.type !== 'song').map((m) => (
                     <div key={m.id}>
                       {m.type === 'photo' && m.url && (
                         <button
                           type="button"
                           onClick={() => setViewingImage(m.url!)}
-                          className="block w-full overflow-hidden rounded-xl border border-line bg-black"
+                          aria-label="Open photo"
+                          className="group/banner relative block h-[150px] w-full overflow-hidden rounded-xl border border-line bg-black"
                         >
                           <img
                             src={m.url}
                             alt=""
                             loading="lazy"
-                            className="mx-auto max-h-[340px] w-auto max-w-full cursor-zoom-in object-contain"
+                            className="h-full w-full cursor-zoom-in object-cover transition-transform duration-200 group-hover/banner:scale-[1.02]"
                           />
+                          {/* A crop hides most of a tall image, so say that the
+                              full one is a tap away rather than leaving it to
+                              be discovered. */}
+                          <span className="pointer-events-none absolute bottom-1.5 right-1.5 rounded-md bg-black/65 px-1.5 py-0.5 text-[10px] font-medium text-white opacity-0 transition-opacity group-hover/banner:opacity-100">
+                            Tap to expand
+                          </span>
                         </button>
                       )}
                       {m.type === 'video' && m.url && (
                         <VideoPlayer
                           src={m.url}
                           poster={m.posterUrl}
-                          className="max-h-[340px] border border-line"
+                          className="max-h-[240px] border border-line"
                         />
                       )}
-                      {m.type === 'song' && m.youtubeVideoId && (
-                        <ThemeSongCard
-                          song={{
-                            youtubeId: m.youtubeVideoId,
-                            title: 'Attached song',
-                            artist: '',
-                            coverUrl: `https://i.ytimg.com/vi/${m.youtubeVideoId}/mqdefault.jpg`,
-                            startTime: 0,
-                          }}
-                        />
-                      )}
+                    </div>
+                  ))}
+
+                  {/* Songs, stacked straight under the pictures. ThemeSongCard
+                      is the compact chip from the feed — cover, title, play —
+                      not a standalone player block. */}
+                  {resolved.filter((m) => m.type === 'song' && m.youtubeVideoId).map((m) => (
+                    <div key={m.id}>
+                      <ThemeSongCard
+                        className="max-w-none"
+                        song={{
+                          youtubeId: m.youtubeVideoId!,
+                          title: 'Attached song',
+                          artist: '',
+                          coverUrl: `https://i.ytimg.com/vi/${m.youtubeVideoId}/mqdefault.jpg`,
+                          startTime: 0,
+                        }}
+                      />
                     </div>
                   ))}
                 </div>

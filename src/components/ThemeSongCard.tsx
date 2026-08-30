@@ -10,6 +10,9 @@ interface ThemeSongCardProps {
   song: ThemeSong;
   isOwnProfile?: boolean;
   onPlay?: () => void;
+  /** Overrides the wrapper width. The default 340px cap suits a feed column;
+   *  a card that stacks this under a full-width banner wants it to match. */
+  className?: string;
 }
 
 /** YouTube's numeric onError codes. Without this mapping the console showed
@@ -46,7 +49,7 @@ const releasePlayback = (key: string) => {
   if (nowPlaying?.key === key) nowPlaying = null;
 };
 
-export function ThemeSongCard({ song, isOwnProfile, onPlay: onPlayProp }: ThemeSongCardProps) {
+export function ThemeSongCard({ song, isOwnProfile, onPlay: onPlayProp, className }: ThemeSongCardProps) {
   const [isPlaying, setIsPlaying] = useState(false);
   const [isPlayerReady, setIsPlayerReady] = useState(false);
   const [isMuted, setIsMuted] = useState(false);
@@ -304,7 +307,7 @@ export function ThemeSongCard({ song, isOwnProfile, onPlay: onPlayProp }: ThemeS
       key={song.youtubeId}
       initial={{ opacity: 0, y: 10 }}
       animate={{ opacity: 1, y: 0 }}
-      className="group relative w-full max-w-[340px]"
+      className={cn('group relative w-full max-w-[340px]', className)}
     >
       {/* The video surface: present, but never shown.
 
