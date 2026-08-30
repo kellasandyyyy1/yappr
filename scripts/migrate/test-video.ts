@@ -142,10 +142,17 @@ async function fixture(): Promise<Buffer> {
       .select('id').single();
     if (convoErr) throw new Error(`conversation: ${convoErr.message}`);
     cleanup.push(() => admin.from('conversations').delete().eq('id', convo.id));
-    await admin.from('conversation_participants').insert([
-      { conversation_id: convo.id, user_id: alice.id },
-      { conversation_id: convo.id, user_id: bob.id },
+
+    // conversation_MEMBERS, with a role. The first version of this used
+    // `conversation_participants` and ignored the error, so alice was never
+    // actually a member — and every chat-video check failed with an RLS
+    // violation that looked like a broken policy rather than a broken test.
+    const { error: memberErr } = await admin.from('conversation_members').insert([
+      { conversation_id: convo.id, user_id: alice.id, role: 'member' },
+      { conversation_id: convo.id, user_id: bob.id, role: 'member' },
     ]);
+    if (memberErr) throw new Error(`conversation_members: ${memberErr.message}`);
+    ok('conversation with two members');
 
     const chatPath = `${convo.id}/${alice.id}-${stamp}.mp4`;
     const chatUpload = await alice.client.storage
