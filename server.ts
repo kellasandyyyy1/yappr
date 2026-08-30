@@ -492,6 +492,30 @@ async function startServer() {
     }
   });
 
+  /**
+   * Any /api/* request reaching this point matched no route above.
+   *
+   * Without it the request falls through to Vite's dev middleware, which
+   * resolves the URL against the filesystem and returns the TRANSFORMED SOURCE
+   * of api/youtube-search.ts with HTTP 200 — or, for a path with no matching
+   * file, index.html. The client then calls res.json() on a JavaScript module
+   * or an HTML page and reports a parse error, which says nothing at all about
+   * the real problem: this process has no such route.
+   *
+   * That is precisely how a dev server left running from before a route was
+   * added presents itself, and it cost a debugging session. A 404 says it in
+   * one line. No secret leaked either way — Vite only substitutes what is in
+   * `define`, so process.env references stay references — but server-side
+   * source has no business being served over HTTP regardless.
+   */
+  app.use("/api", (req, res) => {
+    res.status(404).json({
+      error: "No such API route",
+      path: req.originalUrl,
+      hint: "If this route was added recently, restart the server.",
+    });
+  });
+
   // Vite integration
   if (process.env.NODE_ENV !== "production") {
     const vite = await createViteServer({
