@@ -319,68 +319,113 @@ export function MapView({ user, onUserClick }: MapViewProps) {
             </ModalHeader>
 
             <ModalBody className="scrollbar-thin space-y-4 pb-8">
-              {/* Locket header: the picture, then the name and where it is.
+              {/* Cover photo first, then who and where — the profile-page
+                  shape. The picture of the place is the thing worth opening
+                  the card for, so it is what the card opens on.
 
-                  Rounded-SQUARE for a photo, CIRCLE for an avatar fallback —
-                  the same distinction the map markers make, so a pin looks
-                  like the same object in both places. */}
-              <div className="flex items-center gap-3">
+                  Cover and identity are ONE child of the body rather than
+                  two. The body spaces its children with space-y-4, which
+                  sets margin-top through a `> * + *` selector — two classes
+                  of specificity, so it outranks a plain -mt-8 on the avatar
+                  and would silently cancel the overlap. Nesting them puts
+                  the negative margin inside a container with no space-y of
+                  its own, where it simply works. */}
+              <div>
                 {(() => {
-                  const picture = resolved?.find((m) => m.type === 'photo' && m.url)?.url
+                  const cover =
+                    resolved?.find((m) => m.type === 'photo' && m.url)?.url
                     ?? resolved?.find((m) => m.type === 'video' && m.posterUrl)?.posterUrl;
-                  return picture ? (
-                    <img
-                      src={picture}
-                      alt=""
-                      className="h-16 w-16 shrink-0 rounded-2xl border-2 object-cover"
-                      style={{ borderColor: colorOf.get(openPin.spaceId) }}
-                    />
-                  ) : (
-                    <span
-                      className="flex h-16 w-16 shrink-0 items-center justify-center rounded-full border-2"
-                      style={{ borderColor: colorOf.get(openPin.spaceId) }}
-                    >
-                      <Avatar user={openPin.creator} size="xl" />
-                    </span>
+
+                  return (
+                    <>
+                      {/* Full bleed. The body pads its children by 20px (24 on
+                          desktop), so the banner has to reach back out through
+                          that padding to touch both edges the way a cover
+                          photo does — hence the negative margins rather than
+                          a width. -mt-4 cancels the body top padding so it
+                          sits flush under the title bar. */}
+                      {cover && (
+                        <div className="relative -mx-5 -mt-4 h-32 overflow-hidden border-b border-line bg-black sm:-mx-6">
+                          <img src={cover} alt="" loading="lazy" className="h-full w-full object-cover" />
+                          <div
+                            aria-hidden="true"
+                            className="pointer-events-none absolute inset-x-0 bottom-0 h-2/3 bg-gradient-to-t from-black/70 via-black/20 to-transparent"
+                          />
+                        </div>
+                      )}
+
+                      {/* The avatar straddles the cover's bottom edge when there
+                          is one, and sits normally when there is not — a pin
+                          with only a song has nothing to overlap. items-end so
+                          the name stays clear of the picture instead of being
+                          half-printed over it. */}
+                      {/* relative, and it matters: the cover above is
+                          positioned, and CSS paints positioned boxes after
+                          in-flow ones no matter the DOM order. A static row
+                          here would put the overlapping half of the avatar
+                          BEHIND the cover image — the overlap would simply
+                          not be visible. */}
+                      <div className={cn('relative flex items-end gap-3', cover && '-mt-8')}>
+                        <button
+                          type="button"
+                          onClick={() => onUserClick?.(openPin.creatorId)}
+                          className="press shrink-0 rounded-full"
+                          aria-label="Open profile"
+                        >
+                          {/* Two rings: the outer one is the modal's own
+                              background, which cuts a clean hole in the cover
+                              rather than letting the avatar sit flat on it;
+                              the inner keeps the space colour that ties this
+                              pin to its marker. */}
+                          <span className="block rounded-full ring-4 ring-surface">
+                            <span
+                              className="block rounded-full border-2"
+                              style={{ borderColor: colorOf.get(openPin.spaceId) }}
+                            >
+                              <Avatar user={openPin.creator} size="xl" />
+                            </span>
+                          </span>
+                        </button>
+
+                        <div className="min-w-0 flex-1 pb-0.5">
+                          <h2 id="pin-detail" className="truncate text-xl font-bold leading-tight text-fg">
+                            {openPin.name || openPin.caption || 'A place'}
+                          </h2>
+                          {/* Reverse-geocoded where it resolves, coordinates
+                              where it does not. The sea has no name and that
+                              is fine. */}
+                          <p className="mt-1 flex items-center gap-1.5 truncate text-sm text-muted">
+                            <MapPinIcon size={13} className="shrink-0 text-accent" />
+                            <span className="truncate">
+                              {placeName ?? `${openPin.latitude.toFixed(4)}, ${openPin.longitude.toFixed(4)}`}
+                            </span>
+                          </p>
+                        </div>
+                      </div>
+                    </>
                   );
                 })()}
-
-                <div className="min-w-0 flex-1">
-                  <h2 id="pin-detail" className="truncate text-xl font-bold leading-tight text-fg">
-                    {openPin.name || openPin.caption || 'A place'}
-                  </h2>
-                  {/* Reverse-geocoded where it resolves, coordinates where it
-                      does not. The sea has no name and that is fine. */}
-                  <p className="mt-1 flex items-center gap-1.5 truncate text-sm text-muted">
-                    <MapPinIcon size={13} className="shrink-0 text-accent" />
-                    <span className="truncate">
-                      {placeName ?? `${openPin.latitude.toFixed(4)}, ${openPin.longitude.toFixed(4)}`}
-                    </span>
-                  </p>
-                </div>
               </div>
 
-              {/* 2. Who and when. */}
-              <div className="flex items-center gap-2.5">
-                <button onClick={() => onUserClick?.(openPin.creatorId)} className="press shrink-0">
-                  <Avatar user={openPin.creator} size="sm" />
-                </button>
-                <div className="min-w-0 flex-1">
-                  <p className="truncate text-sm font-semibold text-fg">
+              {/* Who and when, on one line. The avatar that used to anchor
+                  this row is the large one above now: two pictures of the same
+                  person a centimetre apart is not attribution, it is
+                  repetition. The name keeps the link to the profile. */}
+              <div className="flex items-center gap-2">
+                <p className="min-w-0 flex-1 truncate text-xs text-muted">
+                  <button
+                    type="button"
+                    onClick={() => onUserClick?.(openPin.creatorId)}
+                    className="press font-semibold text-fg"
+                  >
                     {openPin.creatorId === user.uid ? 'You' : openPin.creator?.displayName ?? 'Someone'}
-                  </p>
-                  <p className="truncate text-xs text-muted">added {formatTimeAgo(openPin.createdAt)}</p>
-                </div>
+                  </button>
+                  {' · '}added {formatTimeAgo(openPin.createdAt)}
+                </p>
 
-                {/* The song rides this row instead of owning a block under
-                    the cover. A pin has one mood, and it belongs with who
-                    set it down and when — not as a third full-width slab
-                    between the cover and the pictures.
-
-                    The composer appends songs without a cap, so more than
-                    one is possible. They wrap rather than being dropped:
-                    losing the second song to a tidier row would be data
-                    loss dressed up as design. */}
+                {/* The song rides this row rather than owning a block of its
+                    own. The composer appends songs without a cap, so more than
+                    one is possible; they wrap rather than being dropped. */}
                 {resolved && resolved.some((m) => m.type === 'song' && m.youtubeVideoId) && (
                   <div className="flex min-w-0 shrink flex-wrap justify-end gap-1">
                     {resolved.filter((m) => m.type === 'song' && m.youtubeVideoId).map((m) => (
@@ -400,7 +445,6 @@ export function MapView({ user, onUserClick }: MapViewProps) {
                   </div>
                 )}
               </div>
-
               {/* 3. The note, if there is one. Only shown when it is not
                   already doing duty as the title above. */}
               {openPin.caption && openPin.name && (
@@ -413,16 +457,14 @@ export function MapView({ user, onUserClick }: MapViewProps) {
                 </p>
               )}
 
-              {/* The content of the memory: a cover, the song, then the
-                  pictures at full size.
+              {/* Everything attached, below the fold of the identity block.
 
-                  The banner is decoration, not the photo viewer. It crops the
-                  first picture to a strip so the card opens on something of
-                  the place rather than on text — the actual photos live in the
-                  grid below, uncropped, where a portrait shot is not sliced
-                  through the middle. One photo therefore appears twice, as the
-                  cover and again in the grid, which is deliberate: every pin
-                  then has the same shape whether it holds one picture or six. */}
+                  The cover at the top of the card is the first of these
+                  photos, shown again — deliberately. Skipping it here is the
+                  obvious de-duplication and it is wrong twice over: a pin
+                  with one photo would have a cropped strip and no full view
+                  of it anywhere, and pins would change shape depending on how
+                  many pictures they happened to hold. */}
               {resolved === null ? (
                 <div className="flex justify-center py-6">
                   <Loader2 size={18} className="animate-spin text-subtle" />
@@ -431,29 +473,8 @@ export function MapView({ user, onUserClick }: MapViewProps) {
                 (() => {
                   const photos = resolved.filter((m) => m.type === 'photo' && m.url);
                   const videos = resolved.filter((m) => m.type === 'video' && m.url);
-                  const cover = photos[0]?.url;
-
                   return (
                     <div className="space-y-2">
-                      {/* Cover. Not a button: tapping it would duplicate the
-                          grid image directly below and give the same picture
-                          two hit targets a thumb-width apart. */}
-                      {cover && (
-                        <div className="relative h-28 w-full overflow-hidden rounded-xl border border-line bg-black">
-                          <img src={cover} alt="" loading="lazy" className="h-full w-full object-cover" />
-                          {/* Without this the cover was indistinguishable from
-                              a first grid tile that had drifted upwards. The
-                              gradient is what tells the eye it is a header:
-                              headers are darkened at the bottom because text
-                              usually sits there, so the shape reads as chrome
-                              even with no text on it. */}
-                          <div
-                            aria-hidden="true"
-                            className="pointer-events-none absolute inset-x-0 bottom-0 h-2/3 bg-gradient-to-t from-black/70 via-black/20 to-transparent"
-                          />
-                        </div>
-                      )}
-
                       {/* The gallery: an index of what is attached, in uniform
                           square cells.
 
@@ -461,9 +482,9 @@ export function MapView({ user, onUserClick }: MapViewProps) {
                           different heights with gaps between them, which reads
                           as a layout bug rather than as photographs. Squares
                           crop, but only the THUMBNAIL: tapping opens the
-                          original whole. That is the difference from the 150px
-                          banner this replaced, where the crop was the only view
-                          of the picture there was. */}
+                          original whole, which is what separates this from the
+                          cover above — that one is decoration, this is the
+                          index of what is actually here. */}
                       {photos.length > 0 && (
                         <div
                           className={cn(

@@ -96,13 +96,12 @@ console.log('\n2. Marker imagery');
 // --- 3. The locket card ------------------------------------------------------
 console.log('\n3. Locket detail card');
 
-/h-16 w-16 shrink-0 rounded-2xl border-2 object-cover/.test(mapView)
-  ? ok('64px rounded-square photo', 'matches the marker language')
-  : bad('64px rounded-square photo');
-
-/h-16 w-16 shrink-0 items-center justify-center rounded-full/.test(mapView)
-  ? ok('64px circular avatar fallback')
-  : bad('64px circular avatar fallback');
+// The identity block is the person, not the place: the place is the cover
+// above it. A 64px crop of the cover photo sitting directly under the cover
+// was the same image three times over, counting its grid tile.
+mapView.includes('<Avatar user={openPin.creator} size="xl" />')
+  ? ok('the identity block shows the creator', 'the photo is the cover now')
+  : bad('the identity block shows the creator');
 
 /placeName \?\? `\$\{openPin\.latitude\.toFixed\(4\)\}/.test(mapView)
   ? ok('place name, falling back to coordinates')
@@ -135,24 +134,67 @@ console.log('\n3. Locket detail card');
   ? ok('the heading labels the dialog', 'aria-labelledby points at it')
   : bad('the heading labels the dialog');
 
-// Cover strip, then the gallery. The distinction is the whole point of this
-// layout: the crop is decoration, the grid is the photo.
-/h-28 w-full overflow-hidden rounded-xl/.test(mapView)
-  ? ok('the cover is a small strip', '112px, inside the 100-120 the brief asks for')
-  : bad('the cover is a small strip');
-
-/<img src={cover} alt="" loading="lazy" className="h-full w-full object-cover"/.test(mapView)
-  ? ok('the cover crops to fill', 'object-cover')
-  : bad('the cover crops to fill');
-
-// A tappable cover would put a second hit target on the same picture, a
-// thumb-width above the grid copy that already opens it.
+// The cover is the first thing in the body, above the name and the avatar.
 {
-  const coverBlock = mapView.slice(mapView.indexOf('{cover && ('), mapView.indexOf('{cover && (') + 300);
-  /<button/.test(coverBlock)
-    ? bad('the cover is decoration, not a second viewer', 'it is a button')
-    : ok('the cover is decoration, not a second viewer');
+  const bodyIdx = mapView.indexOf('<ModalBody');
+  const coverIdx = mapView.indexOf('{cover && (');
+  const nameIdx = mapView.indexOf('id="pin-detail"');
+  const attribIdx = mapView.indexOf('added {formatTimeAgo(openPin.createdAt)}');
+  coverIdx > bodyIdx && coverIdx < nameIdx && nameIdx < attribIdx
+    ? ok('cover, then name, then attribution', 'the cover is the top of the card')
+    : bad('cover, then name, then attribution',
+        `cover ${coverIdx}, name ${nameIdx}, attribution ${attribIdx}`);
 }
+
+// A cover photo that stops short of the edges is a picture in a card, not a
+// cover. The body pads by 20/24px, so it has to reach back out through that.
+mapView.includes('-mx-5 -mt-4 h-32 overflow-hidden border-b')
+  ? ok('the cover is full-bleed', '128px, edge to edge, flush under the title bar')
+  : bad('the cover is full-bleed');
+
+mapView.includes('sm:-mx-6')
+  ? ok('it clears the wider desktop padding too')
+  : bad('it clears the wider desktop padding too');
+
+// A pin with only a song has no cover to overlap, and the avatar must not be
+// pulled up into the title bar.
+mapView.includes("cover && '-mt-8'")
+  ? ok('the overlap is conditional on there being a cover')
+  : bad('the overlap is conditional on there being a cover');
+
+// The cover is position:relative, and positioned boxes paint after in-flow
+// ones whatever the DOM order — a static identity row would hide the
+// overlapping half of the avatar behind the cover image.
+mapView.includes("relative flex items-end gap-3")
+  ? ok('the identity row is positioned too', 'or the avatar would paint behind the cover')
+  : bad('the identity row is positioned too');
+
+// space-y-4 on the body sets margin-top via `> * + *`, two classes of
+// specificity, which outranks -mt-8 and cancels the overlap silently. The
+// nesting is what makes the negative margin work, so it is worth asserting.
+{
+  const bodyIdx = mapView.indexOf('space-y-4 pb-8');
+  const wrapIdx = mapView.indexOf('const cover =');
+  const overlapIdx = mapView.indexOf("cover && '-mt-8'");
+  const between = mapView.slice(bodyIdx, overlapIdx);
+  wrapIdx > bodyIdx && between.split('<div>').length > 1
+    ? ok('cover and identity share one body child', 'so space-y cannot outrank the overlap')
+    : bad('cover and identity share one body child');
+}
+
+mapView.includes('rounded-full ring-4 ring-surface')
+  ? ok('the avatar is ringed in the modal colour', 'it cuts a hole rather than sitting flat')
+  : bad('the avatar is ringed in the modal colour');
+
+// The space colour is what ties this pin to its marker on the map.
+mapView.includes("style={{ borderColor: colorOf.get(openPin.spaceId) }}")
+  ? ok('the space colour survives on the avatar')
+  : bad('the space colour survives on the avatar');
+
+// One avatar, not two. The big one replaced the small one in the row below.
+!mapView.includes('<Avatar user={openPin.creator} size="sm" />')
+  ? ok('the attribution row lost its duplicate avatar', 'the name still links to the profile')
+  : bad('the attribution row lost its duplicate avatar');
 
 // (The thumbnails used to be object-contain. They crop now — see the square
 // cell assertions below, and the lightbox check that keeps the original whole.)
@@ -161,10 +203,10 @@ mapView.includes(`photos.length > 1 ? 'grid-cols-2' : 'grid-cols-1'`)
   ? ok('two columns from two photos up', 'a lone photo spans the card')
   : bad('two columns from two photos up');
 
-// One photo must render twice, as cover and as gallery. Dropping the first
-// from the grid is the obvious "fix" for the repetition and is wrong: a
-// single-photo pin would then have a crop and no full view of it at all.
-mapView.includes('const cover = photos[0]?.url') && !mapView.includes('photos.slice(1)')
+// The cover photo must still appear in the grid. Skipping it there is the
+// obvious de-duplication and it is wrong: a single-photo pin would keep the
+// cropped strip and lose the only full view of the picture.
+!mapView.includes('photos.slice(1)') && mapView.includes('photos.map((m) => (')
   ? ok('the cover photo is still in the grid', 'one photo shows up twice, by design')
   : bad('the cover photo is still in the grid');
 
@@ -185,17 +227,15 @@ mapView.includes('onClick={() => setViewingImage(m.url!)}')
     : bad('video keeps its own full-width block');
 }
 
-// The song is now part of the "You / added Xs ago" row, not a block of its
-// own. Source order is the check: it has to appear before the cover, which is
-// the first thing in the media group below.
+// The song still rides the attribution row, which now sits under the cover.
 {
   const attribIdx = mapView.indexOf('added {formatTimeAgo(openPin.createdAt)}');
   const songIdx = mapView.indexOf('<ThemeSongCard');
-  const coverIdx = mapView.indexOf('{cover && (');
-  attribIdx !== -1 && songIdx > attribIdx && songIdx < coverIdx
-    ? ok('the song sits in the attribution row', 'above the cover, not between cover and gallery')
+  const galleryIdx = mapView.indexOf("'grid gap-2',");
+  attribIdx !== -1 && songIdx > attribIdx && songIdx < galleryIdx
+    ? ok('the song sits in the attribution row', 'not a block of its own')
     : bad('the song sits in the attribution row',
-        `attribution ${attribIdx}, song ${songIdx}, cover ${coverIdx}`);
+        `attribution ${attribIdx}, song ${songIdx}, gallery ${galleryIdx}`);
 }
 
 mapView.includes('variant="inline"')
