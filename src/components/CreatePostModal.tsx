@@ -743,7 +743,11 @@ export function CreatePostModal({ user, onClose, onSuccess }: CreatePostModalPro
             </AnimatePresence>
           </div>
 
-          <div className="flex items-center gap-2">
+          {/* flex-wrap, not a single line: five attachment buttons plus Post
+              exceed the 464px of usable width in this modal, which is what
+              pushed Post past the right edge. Where it fits, one row; where
+              it does not, Post takes its own line and stays right-aligned. */}
+          <div className="flex flex-wrap items-center gap-2">
             <input
               type="file"
               ref={fileInputRef}
@@ -758,7 +762,7 @@ export function CreatePostModal({ user, onClose, onSuccess }: CreatePostModalPro
               disabled={isRecording || !!pendingVoice || selectedImages.length >= 10}
               onClick={() => fileInputRef.current?.click()}
               title="Attach photos"
-              className="flex h-11 items-center gap-2 rounded-xl border border-line bg-surface-2 px-3 text-sm font-medium text-muted transition-colors duration-100 hover:text-fg disabled:cursor-not-allowed disabled:opacity-40"
+              className="flex h-11 items-center gap-1.5 rounded-xl border border-line bg-surface-2 px-2.5 text-sm font-medium text-muted transition-colors duration-100 hover:text-fg disabled:cursor-not-allowed disabled:opacity-40"
             >
               <ImageIcon size={18} />
               <span className="hidden sm:inline">Photo</span>
@@ -782,7 +786,7 @@ export function CreatePostModal({ user, onClose, onSuccess }: CreatePostModalPro
               disabled={isRecording || !!pendingVoice || preparingVideo}
               title="Attach a video"
               className={cn(
-                'flex h-11 items-center gap-2 rounded-xl border px-3 text-sm font-medium transition-colors duration-100 disabled:cursor-not-allowed disabled:opacity-40',
+                'flex h-11 items-center gap-1.5 rounded-xl border px-2.5 text-sm font-medium transition-colors duration-100 disabled:cursor-not-allowed disabled:opacity-40',
                 selectedVideo
                   ? 'border-accent/40 bg-accent/10 text-accent'
                   : 'border-line bg-surface-2 text-muted hover:text-fg'
@@ -798,7 +802,7 @@ export function CreatePostModal({ user, onClose, onSuccess }: CreatePostModalPro
               disabled={isRecording || !!pendingVoice}
               title="Attach a GIF"
               className={cn(
-                'flex h-11 items-center gap-2 rounded-xl border px-3 text-sm font-medium transition-colors duration-100 disabled:cursor-not-allowed disabled:opacity-40',
+                'flex h-11 items-center gap-1.5 rounded-xl border px-2.5 text-sm font-medium transition-colors duration-100 disabled:cursor-not-allowed disabled:opacity-40',
                 selectedGif
                   ? 'border-accent/40 bg-accent/10 text-accent'
                   : 'border-line bg-surface-2 text-muted hover:text-fg'
@@ -814,7 +818,7 @@ export function CreatePostModal({ user, onClose, onSuccess }: CreatePostModalPro
               disabled={isRecording || !!pendingVoice || selectedImages.length > 0}
               title="Record a voice note"
               className={cn(
-                'flex h-11 items-center gap-2 rounded-xl border px-3 text-sm font-medium transition-colors duration-100 disabled:cursor-not-allowed disabled:opacity-40',
+                'flex h-11 items-center gap-1.5 rounded-xl border px-2.5 text-sm font-medium transition-colors duration-100 disabled:cursor-not-allowed disabled:opacity-40',
                 isRecording
                   ? 'border-danger bg-danger text-black'
                   : 'border-line bg-surface-2 text-muted hover:text-fg'
@@ -830,7 +834,7 @@ export function CreatePostModal({ user, onClose, onSuccess }: CreatePostModalPro
               disabled={isRecording || !!pendingVoice}
               title="Attach a song"
               className={cn(
-                'flex h-11 items-center gap-2 rounded-xl border px-3 text-sm font-medium transition-colors duration-100 disabled:cursor-not-allowed disabled:opacity-40',
+                'flex h-11 items-center gap-1.5 rounded-xl border px-2.5 text-sm font-medium transition-colors duration-100 disabled:cursor-not-allowed disabled:opacity-40',
                 selectedSong
                   ? 'border-accent bg-accent text-white'
                   : 'border-line bg-surface-2 text-muted hover:text-fg'
@@ -842,7 +846,7 @@ export function CreatePostModal({ user, onClose, onSuccess }: CreatePostModalPro
 
             <button
               disabled={isPosting || justPosted || !canSubmit}
-              className="btn-primary ml-auto flex h-11 min-w-[110px] items-center justify-center gap-2 px-5 text-sm"
+              className="btn-primary ml-auto flex h-11 min-w-[110px] shrink-0 items-center justify-center gap-2 px-5 text-sm"
             >
               {justPosted ? (
                 <>
