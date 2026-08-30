@@ -159,8 +159,15 @@ export function ThemeSongSearch({ onSelect, onClose, initialSong }: ThemeSongSea
     return `${min}:${sec.toString().padStart(2, '0')}`;
   };
 
+  // The root is a flex item that has to be able to SHRINK. It was
+  // `flex flex-col h-full`: a percentage height with no min-h-0. min-height on
+  // a flex item defaults to auto, which resolves to the content size, so the
+  // root grew to fit its content rather than to the panel — the panel clipped
+  // it (overflow: hidden) and the results list never received a bounded height
+  // to scroll inside. The same trap already documented for six other
+  // containers in this codebase.
   return (
-    <div className="flex flex-col h-full">
+    <div className="flex min-h-0 flex-1 flex-col">
       {/* Hidden Player for metadata */}
 
       <div className="mb-5 mt-1 flex items-center justify-between gap-3">
@@ -200,38 +207,46 @@ export function ThemeSongSearch({ onSelect, onClose, initialSong }: ThemeSongSea
         </button>
       </div>
 
-      <div className="min-h-0 flex-1 overflow-y-auto pr-1 scrollbar-hide">
+      {/* The search field sits OUTSIDE the scroll area. It used to scroll away
+          with the results, so refining a query meant scrolling back up to
+          reach the box you were typing in. */}
+      {activeTab === 'search' && (
+        <div className="mb-3 shrink-0 space-y-2">
+          <div className="relative">
+            <input
+              autoFocus
+              value={query}
+              onChange={(e) => setQuery(e.target.value)}
+              placeholder="Search for a song or artist…"
+              className="w-full rounded-2xl border border-line bg-surface-3 py-4 pl-12 pr-12 text-sm font-medium transition-colors placeholder:text-subtle focus:border-accent focus:outline-none"
+            />
+            <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-subtle" size={18} />
+            {loading && <Loader2 className="absolute right-4 top-1/2 -translate-y-1/2 animate-spin text-accent" size={18} />}
+            {!loading && query && (
+              <button
+                onClick={() => setQuery('')}
+                aria-label="Clear search"
+                className="absolute right-4 top-1/2 -translate-y-1/2 text-subtle transition-colors hover:text-fg"
+              >
+                <X size={16} />
+              </button>
+            )}
+          </div>
+
+          {error && (
+            <p className="ml-1 flex items-center gap-1.5 text-xs text-danger">
+              <AlertCircle size={12} className="shrink-0" />
+              {error}
+            </p>
+          )}
+        </div>
+      )}
+
+      {/* scrollbar-thin, not scrollbar-hide: with a dozen results the only cue
+          that there are more below is the bar itself. */}
+      <div className="min-h-0 flex-1 overflow-y-auto pr-1 scrollbar-thin">
         {activeTab === 'search' ? (
           <div className="space-y-3">
-            <div className="space-y-3">
-              <div className="relative">
-                <input
-                  autoFocus
-                  value={query}
-                  onChange={(e) => setQuery(e.target.value)}
-                  placeholder="Search for a song or artist…"
-                  className="w-full rounded-2xl border border-line bg-surface-3 py-4 pl-12 pr-12 text-sm font-medium transition-colors placeholder:text-subtle focus:border-accent focus:outline-none"
-                />
-                <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-subtle" size={18} />
-                {loading && <Loader2 className="absolute right-4 top-1/2 -translate-y-1/2 animate-spin text-accent" size={18} />}
-                {!loading && query && (
-                  <button
-                    onClick={() => setQuery('')}
-                    aria-label="Clear search"
-                    className="absolute right-4 top-1/2 -translate-y-1/2 text-subtle transition-colors hover:text-fg"
-                  >
-                    <X size={16} />
-                  </button>
-                )}
-              </div>
-
-              {error && (
-                <p className="ml-1 flex items-center gap-1.5 text-xs text-danger">
-                  <AlertCircle size={12} className="shrink-0" />
-                  {error}
-                </p>
-              )}
-            </div>
 
             {/* Results. Hidden once something is picked, so the preview and
                 start-time controls get the full panel; "Choose another" below
