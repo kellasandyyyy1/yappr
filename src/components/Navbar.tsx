@@ -34,7 +34,10 @@ export function Navbar({
       className="fixed inset-x-0 bottom-0 z-40 border-t border-line bg-surface pb-[env(safe-area-inset-bottom)] sm:hidden"
       aria-label="Primary"
     >
-      <div className="mx-auto flex max-w-md items-center justify-around px-2">
+      {/* min-h ties the rendered height to --nav-h, so anything positioning
+          itself clear of this bar (toasts) cannot drift out of agreement with
+          it. */}
+      <div className="mx-auto flex min-h-[var(--nav-h)] max-w-md items-center justify-around px-2">
         {NAV_ITEMS.map((item) => {
           const Icon = item.icon;
           const isActive = currentView === item.id;

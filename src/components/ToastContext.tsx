@@ -57,10 +57,41 @@ export function ToastProvider({ children }: { children: React.ReactNode }) {
     <ToastContext.Provider value={{ toast }}>
       {children}
       {/* Toasts sit above every modal so confirmations stay visible. */}
+      {/* Placement.
+
+          Desktop: the top-right of the READING COLUMN, not of the viewport.
+          The right rail is sticky at top-0 and its first card is the profile
+          summary — avatar, name, @username — so anything pinned to the
+          viewport's top-right corner lands squarely on top of it. The offsets
+          below mirror the app shell (fixed sidebar 80/256px, 1120px container,
+          gap-8, rail w-80) so the toast stops at main's right edge and never
+          covers the rail, at any width.
+
+          Mobile: bottom, lifted clear of the fixed nav by its declared height
+          plus the safe-area inset plus a gap, so it can sit on neither the
+          navigation icons nor a home indicator. */}
       <div
         style={{ zIndex: 'var(--z-toast)' }}
-        className="pointer-events-none fixed left-1/2 top-5 flex w-full max-w-[340px] -translate-x-1/2 flex-col gap-2 px-4"
+        className={cn(
+          'pointer-events-none fixed',
+          // Mobile: above the nav bar.
+          'inset-x-0 bottom-[calc(var(--nav-h)+env(safe-area-inset-bottom)+0.75rem)]',
+          // Desktop: top, offset by the same fixed sidebar the shell offsets by.
+          'sm:bottom-auto sm:top-4 sm:pl-20 lg:pl-64'
+        )}
       >
+        <div
+          className={cn(
+            'mx-auto flex w-full max-w-[1120px] gap-2',
+            // Padding matches the shell's own. On lg the right padding also
+            // clears the rail: 2rem (px-8) + 20rem (w-80) + 2rem (gap-8).
+            'px-4 sm:px-6 lg:pl-8 lg:pr-96',
+            // Newest toast nearest the thumb on mobile, nearest the top on
+            // desktop — in both cases nearest the edge it entered from.
+            'flex-col-reverse items-stretch',
+            'sm:flex-col sm:items-end'
+          )}
+        >
         <AnimatePresence mode="popLayout">
           {toasts.map((t, i) => {
             const isError = t.type === 'error';
@@ -71,11 +102,13 @@ export function ToastProvider({ children }: { children: React.ReactNode }) {
                 initial={{ opacity: 0, y: -12, scale: 0.97 }}
                 animate={{ opacity: 1, y: 0, scale: 1 }}
                 exit={{ opacity: 0, scale: 0.97, transition: { duration: 0.15 } }}
-                // A small indent per toast so a stack reads as several separate
-                // cards rather than one tall block. Capped, or the fourth would
-                // be noticeably narrower than the first.
-                style={{ marginLeft: Math.min(i, 3) * 5 }}
-                className="pointer-events-auto"
+                // Each toast down the stack is a few pixels narrower, so a
+                // group reads as separate cards rather than one tall block.
+                // A margin would push a right-aligned card past the container
+                // edge; a width step cascades identically in both alignments
+                // and cannot overflow. Capped, or the fourth would look stunted.
+                style={{ width: `calc(100% - ${Math.min(i, 3) * 5}px)` }}
+                className="pointer-events-auto w-full sm:w-[340px]"
               >
                 <div
                   role="status"
@@ -128,7 +161,8 @@ export function ToastProvider({ children }: { children: React.ReactNode }) {
               </motion.div>
             );
           })}
-        </AnimatePresence>
+          </AnimatePresence>
+        </div>
       </div>
     </ToastContext.Provider>
   );

@@ -78,7 +78,7 @@ const code = src.replace(/\/\*[\s\S]*?\*\//g, '').replace(/\/\/[^\n]*/g, '');
   ? ok('stack has a visible gap')
   : bad('stack has a visible gap', 'no gap class on the container');
 
-/marginLeft/.test(code)
+/Math\.min\(i, 3\)/.test(code)
   ? ok('stacked toasts are offset from each other')
   : bad('stacked toasts are offset from each other');
 

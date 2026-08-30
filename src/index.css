@@ -88,6 +88,13 @@
     --z-nested-modal: 1101;
     --z-popover: 1200;     /* mention lists, emoji pickers */
     --z-toast: 1300;
+
+    /* Height of the fixed mobile nav bar, excluding the safe-area inset it
+       also pads itself with. Navbar.tsx enforces it as a min-height, so this
+       is the real measurement rather than a guess — anything that has to sit
+       clear of the nav (toasts, sheets) offsets by
+       calc(var(--nav-h) + env(safe-area-inset-bottom) + a gap). */
+    --nav-h: 3.5rem;
   }
 }
 
