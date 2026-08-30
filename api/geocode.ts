@@ -6,7 +6,7 @@ import { createClient } from '@supabase/supabase-js';
 // ERR_MODULE_NOT_FOUND at runtime. It resolves fine locally because dev goes
 // through server.ts under tsx, which does guess — so this only ever fails in
 // production. TypeScript maps the .js back to the .ts source at build time.
-import { geocode, GeocodeError } from './_nominatim.js';
+import { geocode, reverseGeocode, GeocodeError } from './_nominatim.js';
 
 /**
  * GET /api/geocode?q=… — proxied Nominatim search.
@@ -76,9 +76,20 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     return res.status(429).json({ error: 'Search temporarily unavailable, try again shortly.' });
   }
 
+  // Same endpoint serves both directions: ?q= searches, ?lat=&lon= names a
+  // point. One route keeps the auth, the rate limit and the outbound
+  // throttle in a single place rather than duplicated across two.
   const q = typeof req.query.q === 'string' ? req.query.q : '';
+  const lat = Number(req.query.lat);
+  const lon = Number(req.query.lon);
+  const isReverse = Number.isFinite(lat) && Number.isFinite(lon);
 
   try {
+    if (isReverse) {
+      const place = await reverseGeocode(lat, lon);
+      res.setHeader('Cache-Control', 'private, max-age=86400');
+      return res.status(200).json({ place });
+    }
     const results = await geocode(q);
     // Place names are stable; letting the browser reuse a result for a few
     // minutes takes further load off Nominatim.

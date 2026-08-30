@@ -453,10 +453,14 @@ async function startServer() {
    */
   app.get("/api/geocode", requireSupabaseAuth, async (req, res) => {
     const q = typeof req.query.q === "string" ? req.query.q : "";
+    const lat = Number(req.query.lat);
+    const lon = Number(req.query.lon);
+    const isReverse = Number.isFinite(lat) && Number.isFinite(lon);
 
     try {
-      const { geocode, GeocodeError } = await import("./api/_nominatim");
+      const { geocode, reverseGeocode, GeocodeError } = await import("./api/_nominatim");
       try {
+        if (isReverse) return res.json({ place: await reverseGeocode(lat, lon) });
         return res.json({ results: await geocode(q) });
       } catch (err) {
         if (err instanceof GeocodeError) {

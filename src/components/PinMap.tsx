@@ -43,29 +43,81 @@ export const SPACE_COLORS = [
 
 export const spaceColor = (index: number) => SPACE_COLORS[index % SPACE_COLORS.length];
 
+/** HTML-escapes a value going into a divIcon string. The description on a
+ *  GIPHY result or a display name can contain quotes, and divIcon takes raw
+ *  HTML — an unescaped one closes the attribute and breaks the marker. */
+const esc = (v: string) =>
+  v.replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+
 /**
- * A teardrop pin drawn as SVG. `divIcon` rather than `icon` so there is no
- * network request and no bundler asset resolution to get wrong.
+ * A photo bubble: a white rounded-square frame around the pin's first photo,
+ * with a pointer tail beneath.
+ *
+ * divIcon rather than icon, so there is no marker sprite to load and no
+ * bundler asset path to get wrong — Leaflet's default is a red PNG resolved
+ * from its own dist folder, which breaks under a bundler that rewrites asset
+ * URLs and clashes with the palette even when it does not.
+ *
+ * A photo is a rounded SQUARE and an avatar fallback is a CIRCLE. That is the
+ * same distinction the detail card makes, so the two read as one system.
  */
-const pinIcon = (color: string, dimmed = false) =>
-  L.divIcon({
+const photoBubble = (opts: {
+  photoUrl?: string;
+  avatarUrl?: string;
+  initial?: string;
+  color: string;
+  dimmed?: boolean;
+}) => {
+  const { photoUrl, avatarUrl, initial = '?', color, dimmed } = opts;
+  const hasPhoto = !!photoUrl;
+  const src = photoUrl || avatarUrl || '';
+  // Square for a photo, round for an avatar — the fallback should not
+  // pretend to be a picture of the place.
+  const innerRadius = hasPhoto ? '9px' : '999px';
+
+  // onerror rather than a load check: a dead storage URL would otherwise
+  // leave a broken-image glyph inside the frame, which looks like a bug
+  // rather than an absence. Hiding it reveals the initial underneath.
+  const inner = src
+    ? `<img src="${esc(src)}" alt="" referrerpolicy="no-referrer" loading="lazy"
+           onerror="this.style.display='none'"
+           style="position:absolute;inset:0;width:100%;height:100%;object-fit:cover;border-radius:${innerRadius};" />`
+    : '';
+
+  return L.divIcon({
     className: '', // suppress Leaflet's own styling hooks
     html: `
       <div style="
         transform: translate(-50%, -100%);
-        filter: drop-shadow(0 2px 4px rgba(0,0,0,0.6));
-        opacity: ${dimmed ? 0.55 : 1};
+        opacity: ${dimmed ? 0.75 : 1};
+        filter: drop-shadow(0 3px 6px rgba(0,0,0,0.55));
       ">
-        <svg width="28" height="36" viewBox="0 0 28 36" fill="none" xmlns="http://www.w3.org/2000/svg">
-          <path d="M14 0C6.27 0 0 6.27 0 14c0 9.8 12.35 21.2 12.88 21.68a1.67 1.67 0 0 0 2.24 0C15.65 35.2 28 23.8 28 14 28 6.27 21.73 0 14 0Z" fill="${color}"/>
-          <circle cx="14" cy="13.5" r="5" fill="#0d0d12"/>
-        </svg>
+        <div style="
+          width:60px; height:56px; box-sizing:border-box;
+          background:#fff; border-radius:14px; padding:4px;
+          border:2px solid ${color};
+        ">
+          <div style="
+            position:relative; width:100%; height:100%;
+            border-radius:${innerRadius}; overflow:hidden;
+            background:#1e1e27;
+            display:flex; align-items:center; justify-content:center;
+            font:600 16px/1 Inter, system-ui, sans-serif; color:#a1a1aa;
+          ">${esc(initial)}${inner}</div>
+        </div>
+        <div style="
+          width:0; height:0; margin:-1px auto 0;
+          border-left:7px solid transparent;
+          border-right:7px solid transparent;
+          border-top:9px solid ${color};
+        "></div>
       </div>`,
-    iconSize: [28, 36],
-    // The anchor is handled by the transform above, so Leaflet's own offset is
-    // zero — mixing the two puts the point of the pin in the wrong place.
+    iconSize: [60, 65],
+    // The transform above does the anchoring, so Leaflet's own offset stays
+    // zero — applying both puts the tail somewhere other than the location.
     iconAnchor: [0, 0],
   });
+};
 
 /** Reports taps so the create flow can drop a pin where the user pressed. */
 function TapHandler({ onPick }: { onPick: (lat: number, lng: number) => void }) {
@@ -96,10 +148,16 @@ export interface MapPin {
   id: string;
   latitude: number;
   longitude: number;
-  /** Marker colour. Defaults to the app accent. */
+  /** Frame colour — the space this pin belongs to. */
   color?: string;
   /** Dimmed — used for pins someone else added. */
   muted?: boolean;
+  /** The pin's first photo, or a video's poster. Shown square. */
+  photoUrl?: string;
+  /** The creator's avatar, used when the pin has no picture. Shown round. */
+  avatarUrl?: string;
+  /** Last resort when there is neither: one character. */
+  initial?: string;
 }
 
 interface PinMapProps {
@@ -125,13 +183,28 @@ export function PinMap({
   // Icons are cached per colour+dimmed pair: divIcon builds an HTML string,
   // and rebuilding one per marker per render is wasted work on a busy map.
   const iconCache = useMemo(() => new Map<string, L.DivIcon>(), []);
-  const iconFor = (color: string, dimmed: boolean) => {
-    const key = `${color}|${dimmed}`;
+  const iconFor = (pin: MapPin) => {
+    const color = pin.color ?? ACCENT;
+    // Every input that changes the rendered HTML is in the key, or two pins
+    // with different photos would share one cached bubble.
+    const key = `${color}|${!!pin.muted}|${pin.photoUrl ?? ""}|${pin.avatarUrl ?? ""}|${pin.initial ?? ""}`;
     let icon = iconCache.get(key);
-    if (!icon) { icon = pinIcon(color, dimmed); iconCache.set(key, icon); }
+    if (!icon) {
+      icon = photoBubble({
+        photoUrl: pin.photoUrl,
+        avatarUrl: pin.avatarUrl,
+        initial: pin.initial,
+        color,
+        dimmed: pin.muted,
+      });
+      iconCache.set(key, icon);
+    }
     return icon;
   };
-  const draftIcon = useMemo(() => pinIcon('#f87171'), []);
+
+  // The pin being placed: a plain frame in the danger colour, so it reads as
+  // provisional rather than as something already saved.
+  const draftIcon = useMemo(() => photoBubble({ color: '#f87171', initial: '+' }), []);
 
   return (
     <div className={cn('map-dark relative overflow-hidden rounded-2xl border border-line', className)}>
@@ -177,11 +250,14 @@ export function PinMap({
         <Recenter center={center ?? null} zoom={zoom} />
         {onPick && <TapHandler onPick={onPick} />}
 
-        {pins.map((p) => (
+        {pins.map((p, i) => (
           <Marker
             key={p.id}
             position={[p.latitude, p.longitude]}
-            icon={iconFor(p.color ?? ACCENT, !!p.muted)}
+            icon={iconFor(p)}
+            // Later pins in the list draw above earlier ones, so the newest
+            // is the one on top when bubbles overlap.
+            zIndexOffset={i}
             eventHandlers={onPinClick ? { click: () => onPinClick(p.id) } : undefined}
           />
         ))}

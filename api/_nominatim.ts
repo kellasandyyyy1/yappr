@@ -173,3 +173,79 @@ export async function geocode(rawQuery: string, limit = 5): Promise<GeocodeResul
   cacheSet(cacheKey, results);
   return results;
 }
+
+/**
+ * Turns coordinates into a place name — "Westminster, London" rather than
+ * "51.50072, -0.12462".
+ *
+ * Goes through the same queue and cache as the forward search, so it is
+ * subject to the same 1 request/second courtesy. Coordinates are rounded to
+ * ~11m before they become a cache key: a pin detail opened twice must not be
+ * two requests because the last decimal differed, and no one needs street-door
+ * precision in a subtitle.
+ *
+ * Returns null rather than throwing when there is simply nothing there — the
+ * middle of the sea is a legitimate pin location, and the caller falls back to
+ * showing the coordinates.
+ */
+export async function reverseGeocode(
+  latitude: number,
+  longitude: number
+): Promise<{ name: string; label: string } | null> {
+  if (!Number.isFinite(latitude) || !Number.isFinite(longitude)) return null;
+
+  const lat = latitude.toFixed(4);
+  const lon = longitude.toFixed(4);
+  const cacheKey = `rev|${lat},${lon}`;
+
+  const cached = cacheGet(cacheKey);
+  if (cached) return cached.length ? { name: cached[0].name, label: cached[0].label } : null;
+
+  const params = new URLSearchParams({
+    lat,
+    lon,
+    format: 'json',
+    // 14 is roughly suburb/neighbourhood — the level that reads as a place
+    // rather than a postal address.
+    zoom: '14',
+    addressdetails: '1',
+  });
+
+  const res = await scheduled(() =>
+    fetch(`https://nominatim.openstreetmap.org/reverse?${params}`, {
+      headers: {
+        'User-Agent': USER_AGENT,
+        Referer: 'https://yapprr.kelas.site',
+        'Accept-Language': 'en',
+      },
+    })
+  );
+
+  if (!res.ok) {
+    if (res.status === 429 || res.status === 403) {
+      throw new GeocodeError('Search temporarily unavailable, try again shortly.', 429);
+    }
+    throw new GeocodeError(`Reverse lookup failed (${res.status}).`, 502);
+  }
+
+  const body = await res.json().catch(() => null);
+  const display = String(body?.display_name ?? '').trim();
+  if (!display) {
+    cacheSet(cacheKey, []);
+    return null;
+  }
+
+  // "Westminster, London, England, United Kingdom" -> "Westminster, London".
+  // Two segments is the shape the design asks for; the rest is country-level
+  // detail that adds nothing beside a place name.
+  const parts = display.split(',').map((x: string) => x.trim()).filter(Boolean);
+  const address = body?.address ?? {};
+  const locality =
+    address.suburb || address.neighbourhood || address.village || address.town || parts[0];
+  const region = address.city || address.county || address.state || parts[1];
+  const name = [locality, region].filter(Boolean).filter((v, i, a) => a.indexOf(v) === i).join(', ');
+
+  const result = { name: name || parts.slice(0, 2).join(', '), label: display };
+  cacheSet(cacheKey, [{ id: cacheKey, name: result.name, context: '', label: display, latitude, longitude }]);
+  return result;
+}

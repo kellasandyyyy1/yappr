@@ -133,3 +133,34 @@ export const searchHistory = {
     if (error) throw error;
   },
 };
+
+/**
+ * Names a point — "Westminster, London" for a pin's subtitle.
+ *
+ * Resolves to null when the lookup finds nothing or fails, rather than
+ * throwing: a place name is decoration on a card that is perfectly readable
+ * with coordinates instead, and losing the whole card because the sea has no
+ * name would be the wrong trade.
+ */
+export async function reverseGeocode(
+  latitude: number,
+  longitude: number,
+  signal?: AbortSignal
+): Promise<string | null> {
+  try {
+    const { data } = await supabase.auth.getSession();
+    const accessToken = data.session?.access_token;
+    if (!accessToken) return null;
+
+    const res = await fetch(
+      `/api/geocode?lat=${encodeURIComponent(latitude)}&lon=${encodeURIComponent(longitude)}`,
+      { headers: { Authorization: `Bearer ${accessToken}` }, signal }
+    );
+    if (!res.ok) return null;
+
+    const body = await res.json();
+    return body?.place?.name || null;
+  } catch {
+    return null;
+  }
+}

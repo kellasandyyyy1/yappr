@@ -12,6 +12,7 @@ import { Avatar } from './Avatar';
 import { useToast } from './ToastContext';
 import { pins as pinsApi, spaces as spacesApi, Pin, PinMedia, MapSpace } from '../lib/pins';
 import { formatTimeAgo, describeError, cn } from '../lib/utils';
+import { reverseGeocode } from '../lib/geocode';
 import { AnimatePresence } from 'motion/react';
 import type { User } from '../types';
 
@@ -46,6 +47,9 @@ export function MapView({ user, onUserClick }: MapViewProps) {
   const [confirmDelete, setConfirmDelete] = useState<string | null>(null);
   // Set when a place is chosen from search, so the map pans there.
   const [searchCenter, setSearchCenter] = useState<[number, number] | null>(null);
+  // "Westminster, London" for the open pin. Null until it resolves, and
+  // null forever if it cannot — the card falls back to coordinates.
+  const [placeName, setPlaceName] = useState<string | null>(null);
   const { center } = useCurrentLocation();
   const { toast } = useToast();
 
@@ -85,12 +89,39 @@ export function MapView({ user, onUserClick }: MapViewProps) {
     return () => { cancelled = true; };
   }, [openPin]);
 
+  // One reverse lookup per opened pin, aborted if the pin closes first.
+  // Nominatim allows 1 request/second for the whole app, so this must not
+  // run for every pin on the map — only the one being read.
+  useEffect(() => {
+    setPlaceName(null);
+    if (!openPin) return;
+    const controller = new AbortController();
+    reverseGeocode(openPin.latitude, openPin.longitude, controller.signal).then((name) => {
+      if (!controller.signal.aborted) setPlaceName(name);
+    });
+    return () => controller.abort();
+  }, [openPin]);
+
   /** Stable colour per space, by list position. */
   const colorOf = useMemo(() => {
     const byId = new Map<string, string>();
     (spaces ?? []).forEach((s, i) => byId.set(s.id, spaceColor(i)));
     return byId;
   }, [spaces]);
+
+  /**
+   * The picture a pin's marker shows: its first photo, or a video's poster.
+   *
+   * Only public-bucket URLs are used. Pin photos go to `posts` and videos to
+   * `post-videos`, both public, so these need no signing — which matters,
+   * because a marker cannot await a signed URL.
+   */
+  const pictureOf = (pin: Pin): string | undefined => {
+    const photo = pin.media.find((m) => m.type === 'photo' && m.url);
+    if (photo?.url) return photo.url;
+    const video = pin.media.find((m) => m.type === 'video' && m.posterUrl);
+    return video?.posterUrl;
+  };
 
   const visiblePins = (pins ?? []).filter((p) => !activeSpaceId || p.spaceId === activeSpaceId);
   const activeSpace = (spaces ?? []).find((s) => s.id === activeSpaceId) ?? null;
@@ -229,6 +260,11 @@ export function MapView({ user, onUserClick }: MapViewProps) {
             // Someone else's pin is dimmed, so "mine" and "theirs" read apart
             // without opening anything.
             muted: p.creatorId !== user.uid,
+            // Photo first; the creator's avatar when the pin has no picture
+            // — a song-only pin still needs a face rather than an empty box.
+            photoUrl: pictureOf(p),
+            avatarUrl: p.creator?.photoURL,
+            initial: (p.name || p.creator?.displayName || '?').charAt(0).toUpperCase(),
           }))}
           onPinClick={(id) => setOpenPin(visiblePins.find((p) => p.id === id) ?? null)}
         />
@@ -283,19 +319,48 @@ export function MapView({ user, onUserClick }: MapViewProps) {
             </ModalHeader>
 
             <ModalBody className="scrollbar-thin space-y-4">
-              {/* 1. The name. What the place means, not where it is. */}
-              <div>
-                <h2 className="text-xl font-bold leading-tight text-fg">
-                  {openPin.name || openPin.caption || 'A place'}
-                </h2>
-                <p className="mt-1 flex items-center gap-1.5 text-xs text-muted">
-                  <span
-                    aria-hidden="true"
-                    className="h-2 w-2 shrink-0 rounded-full"
-                    style={{ background: colorOf.get(openPin.spaceId) }}
-                  />
-                  {spaceOf(openPin.spaceId)?.name ?? 'Space'}
-                </p>
+              {/* Locket header: the picture, then the name and where it is.
+
+                  Rounded-SQUARE for a photo, CIRCLE for an avatar fallback —
+                  the same distinction the map markers make, so a pin looks
+                  like the same object in both places. */}
+              <div className="flex items-center gap-3">
+                {(() => {
+                  const picture = resolved?.find((m) => m.type === 'photo' && m.url)?.url
+                    ?? resolved?.find((m) => m.type === 'video' && m.posterUrl)?.posterUrl;
+                  return picture ? (
+                    <img
+                      src={picture}
+                      alt=""
+                      className="h-16 w-16 shrink-0 rounded-2xl border-2 object-cover"
+                      style={{ borderColor: colorOf.get(openPin.spaceId) }}
+                    />
+                  ) : (
+                    <span
+                      className="flex h-16 w-16 shrink-0 items-center justify-center rounded-full border-2"
+                      style={{ borderColor: colorOf.get(openPin.spaceId) }}
+                    >
+                      <Avatar user={openPin.creator} size="xl" />
+                    </span>
+                  );
+                })()}
+
+                <div className="min-w-0 flex-1">
+                  <h2 className="truncate text-xl font-bold leading-tight text-fg">
+                    {openPin.name || openPin.caption || 'A place'}
+                  </h2>
+                  {/* Reverse-geocoded where it resolves, coordinates where it
+                      does not. The sea has no name and that is fine. */}
+                  <p className="mt-1 flex items-center gap-1.5 truncate text-sm text-muted">
+                    <MapPinIcon size={13} className="shrink-0 text-accent" />
+                    <span className="truncate">
+                      {placeName ?? `${openPin.latitude.toFixed(4)}, ${openPin.longitude.toFixed(4)}`}
+                    </span>
+                  </p>
+                  <p className="mt-0.5 truncate text-xs text-subtle">
+                    {spaceOf(openPin.spaceId)?.name ?? 'Space'}
+                  </p>
+                </div>
               </div>
 
               {/* 2. Who and when. */}
@@ -384,8 +449,7 @@ export function MapView({ user, onUserClick }: MapViewProps) {
                   }]}
                   className="h-32"
                 />
-                <p className="mt-1.5 flex items-center gap-1.5 text-[11px] tabular-nums text-subtle">
-                  <MapPinIcon size={11} className="shrink-0" />
+                <p className="mt-1.5 text-[11px] tabular-nums text-subtle">
                   {openPin.latitude.toFixed(5)}, {openPin.longitude.toFixed(5)}
                 </p>
               </div>
