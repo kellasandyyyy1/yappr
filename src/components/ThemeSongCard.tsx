@@ -28,6 +28,24 @@ const YT_ERRORS: Record<number, string> = {
  *  no amount of further waiting helps. */
 const INIT_TIMEOUT_MS = 8000;
 
+/**
+ * Only one theme song plays at a time, across every card on the page.
+ *
+ * The feed renders a card per music post, each with its own independent
+ * player, so without a registry two songs started in sequence simply play
+ * over each other. Starting one stops whichever was already going.
+ */
+let nowPlaying: { key: string; stop: () => void } | null = null;
+
+const claimPlayback = (key: string, stop: () => void) => {
+  if (nowPlaying && nowPlaying.key !== key) nowPlaying.stop();
+  nowPlaying = { key, stop };
+};
+
+const releasePlayback = (key: string) => {
+  if (nowPlaying?.key === key) nowPlaying = null;
+};
+
 export function ThemeSongCard({ song, isOwnProfile, onPlay: onPlayProp }: ThemeSongCardProps) {
   const [isPlaying, setIsPlaying] = useState(false);
   const [isPlayerReady, setIsPlayerReady] = useState(false);
@@ -41,6 +59,9 @@ export function ThemeSongCard({ song, isOwnProfile, onPlay: onPlayProp }: ThemeS
   // embed: the underlying player is destroyed and rebuilt from scratch.
   const [playerNonce, setPlayerNonce] = useState(0);
   const playerRef = useRef<any>(null);
+  // True only between pressing play and playback stopping. Anything that starts
+  // the video without this set is playback nobody asked for, and gets stopped.
+  const userStartedRef = useRef(false);
   const { toast } = useToast();
   const playerId = React.useMemo(
     () => `yt-player-${song.youtubeId}-${Math.random().toString(36).substr(2, 9)}`,
@@ -68,12 +89,17 @@ export function ThemeSongCard({ song, isOwnProfile, onPlay: onPlayProp }: ThemeS
     playerRef.current = event.target;
     setIsPlayerReady(true);
     setLoadError(null);
-    // Seek to start time
-    try {
-      event.target.seekTo(song.startTime || 0, true);
-    } catch (e) {
-      console.warn('Seek failed in onReady:', e);
-    }
+
+    // This used to call seekTo(startTime) here, which is what made every music
+    // post in the feed start playing the moment its iframe finished loading.
+    // Per the IFrame API reference: "If the player is paused when the function
+    // is called, it will remain paused. If the function is called from another
+    // state (playing, video cued, etc.), the player will play the video."
+    // A player that has just become ready is in state 5, video cued — never
+    // paused — so the seek always started it.
+    //
+    // No seek is needed at all: playerVars.start already cues the video at
+    // startTime, and togglePlay seeks again before playing.
   };
 
   const retry = (e: React.MouseEvent) => {
@@ -88,9 +114,28 @@ export function ThemeSongCard({ song, isOwnProfile, onPlay: onPlayProp }: ThemeS
   const onStateChange: YouTubeProps['onStateChange'] = (event) => {
     // 1 is playing, 2 is paused, 0 is ended, 3 is buffering
     if (event.data === 1) {
+      // A backstop for any route into playback that did not come from the play
+      // button — the seekTo above was one, and silently starting the audio is a
+      // bad enough failure to be worth guarding rather than merely fixing.
+      if (!userStartedRef.current) {
+        console.warn('[ThemeSongCard] stopping playback that was not requested', {
+          videoId: song.youtubeId,
+        });
+        try { event.target.pauseVideo(); } catch { /* ignore */ }
+        setIsPlaying(false);
+        return;
+      }
       setIsPlaying(true);
+      claimPlayback(playerId, () => {
+        userStartedRef.current = false;
+        try { event.target.pauseVideo(); } catch { /* ignore */ }
+      });
+      // Only a song someone chose to play counts as listened to. Autoplay was
+      // writing a history row for every music post that scrolled into the feed.
       onPlayProp?.();
     } else if (event.data === 2 || event.data === 0) {
+      userStartedRef.current = false;
+      releasePlayback(playerId);
       setIsPlaying(false);
     }
   };
@@ -113,8 +158,12 @@ export function ThemeSongCard({ song, isOwnProfile, onPlay: onPlayProp }: ThemeS
 
     try {
       if (isPlaying) {
+        userStartedRef.current = false;
         player.pauseVideo();
       } else {
+        // Set before playVideo(), so the onStateChange guard above lets this
+        // one through.
+        userStartedRef.current = true;
         // Essential for mobile: unMute and then Play
         // Some mobile browsers block sound-on autoplay, so we ensure it's loud
         player.unMute();
@@ -167,6 +216,7 @@ export function ThemeSongCard({ song, isOwnProfile, onPlay: onPlayProp }: ThemeS
   // ref inside the cleanup gets the player that exists at teardown.
   useEffect(() => {
     return () => {
+      releasePlayback(playerId);
       const player = playerRef.current;
       if (player && typeof player.stopVideo === 'function') {
         try {

@@ -41,8 +41,12 @@ export function ThemeSongSearch({ onSelect, onClose, initialSong }: ThemeSongSea
 
   const onPreviewReady: YouTubeProps['onReady'] = (event) => {
     previewPlayerRef.current = event.target;
-    event.target.seekTo(startTime, true);
-    event.target.pauseVideo();
+    // No seekTo here. On a freshly-cued player seekTo() starts playback (see
+    // the IFrame API reference), which is why this needed an immediate
+    // pauseVideo() to undo it — audible as a blip of sound on open. The start
+    // offset is already set by the start playerVar. The pause stays as a
+    // guard in case the embed comes up playing for any other reason.
+    try { event.target.pauseVideo(); } catch { /* ignore */ }
   };
 
   const onPreviewStateChange: YouTubeProps['onStateChange'] = (event) => {
