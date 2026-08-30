@@ -305,6 +305,28 @@
     opacity: 1;
   }
 
+  /* Dark map tiles, without a tile key.
+
+     CARTO's dark basemap now watermarks unauthenticated tiles with a large
+     diagonal "API KEY REQUIRED" — verified by fetching one and looking at
+     it. It used to be keyless and is not any more.
+
+     So the tiles are OpenStreetMap's own, which genuinely need no key, and
+     the darkening happens here. The filter is on the TILE PANE only: putting
+     it on the map container would invert the markers and controls too, which
+     is how this trick usually goes wrong.
+
+     invert + hue-rotate(180deg) is the pair that matters — inverting alone
+     turns land cyan and water orange; rotating the hue back through 180
+     restores something close to the original colour relationships in
+     negative. The rest just takes the edge off the contrast.
+
+     A purpose-built dark basemap still looks better. If a CARTO key is ever
+     added, swap the URL back in PinMap and drop this class. */
+  .map-dark .leaflet-tile-pane {
+    filter: invert(1) hue-rotate(180deg) brightness(0.92) contrast(0.88) saturate(0.7);
+  }
+
   .scrollbar-hide::-webkit-scrollbar {
     display: none;
   }

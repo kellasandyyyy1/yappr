@@ -260,9 +260,11 @@ export function MapView({ user, onUserClick }: MapViewProps) {
       <AnimatePresence>
         {openPin && (
           <Modal onClose={() => setOpenPin(null)} size="lg" labelledBy="pin-detail" className="sm:h-[80vh]">
+            {/* The header carries only the controls. The name is the first
+                thing in the body instead, where it can be large and warm
+                rather than squeezed into a title bar beside two icons. */}
             <ModalHeader
-              title={openPin.caption || 'Pin'}
-              subtitle={`${spaceOf(openPin.spaceId)?.name ?? 'Space'} · ${openPin.latitude.toFixed(5)}, ${openPin.longitude.toFixed(5)}`}
+              title={openPin.name || openPin.caption || 'Pin'}
               onClose={() => setOpenPin(null)}
               id="pin-detail"
             >
@@ -280,7 +282,23 @@ export function MapView({ user, onUserClick }: MapViewProps) {
               )}
             </ModalHeader>
 
-            <ModalBody className="scrollbar-thin space-y-3">
+            <ModalBody className="scrollbar-thin space-y-4">
+              {/* 1. The name. What the place means, not where it is. */}
+              <div>
+                <h2 className="text-xl font-bold leading-tight text-fg">
+                  {openPin.name || openPin.caption || 'A place'}
+                </h2>
+                <p className="mt-1 flex items-center gap-1.5 text-xs text-muted">
+                  <span
+                    aria-hidden="true"
+                    className="h-2 w-2 shrink-0 rounded-full"
+                    style={{ background: colorOf.get(openPin.spaceId) }}
+                  />
+                  {spaceOf(openPin.spaceId)?.name ?? 'Space'}
+                </p>
+              </div>
+
+              {/* 2. Who and when. */}
               <div className="flex items-center gap-2.5">
                 <button onClick={() => onUserClick?.(openPin.creatorId)} className="press shrink-0">
                   <Avatar user={openPin.creator} size="sm" />
@@ -291,46 +309,48 @@ export function MapView({ user, onUserClick }: MapViewProps) {
                   </p>
                   <p className="truncate text-xs text-muted">added {formatTimeAgo(openPin.createdAt)}</p>
                 </div>
-                <span
-                  aria-hidden="true"
-                  className="h-2.5 w-2.5 shrink-0 rounded-full"
-                  style={{ background: colorOf.get(openPin.spaceId) }}
-                />
               </div>
 
-              <PinMap
-                center={[openPin.latitude, openPin.longitude]}
-                zoom={15}
-                pins={[{
-                  id: openPin.id,
-                  latitude: openPin.latitude,
-                  longitude: openPin.longitude,
-                  color: colorOf.get(openPin.spaceId),
-                }]}
-                className="h-40"
-              />
+              {/* 3. The note, if there is one. Only shown when it is not
+                  already doing duty as the title above. */}
+              {openPin.caption && openPin.name && (
+                <p className="whitespace-pre-wrap text-[15px] leading-relaxed text-fg">
+                  {openPin.caption}
+                </p>
+              )}
 
+              {/* 4. Media, capped so it cannot swallow the card. A photo is
+                  contained rather than cropped — a memory should not lose its
+                  edges to fit a box — and the letterboxing sits on a dark
+                  ground so it reads as deliberate. */}
               {resolved === null ? (
                 <div className="flex justify-center py-6">
                   <Loader2 size={18} className="animate-spin text-subtle" />
                 </div>
-              ) : resolved.length === 0 ? (
-                <p className="py-4 text-center text-sm text-subtle">No media on this pin.</p>
-              ) : (
+              ) : resolved.length === 0 ? null : (
                 <div className="space-y-2">
                   {resolved.map((m) => (
                     <div key={m.id}>
                       {m.type === 'photo' && m.url && (
-                        <img
-                          src={m.url}
-                          alt=""
+                        <button
+                          type="button"
                           onClick={() => setViewingImage(m.url!)}
-                          className="w-full cursor-zoom-in rounded-xl border border-line object-cover"
-                          loading="lazy"
-                        />
+                          className="block w-full overflow-hidden rounded-xl border border-line bg-black"
+                        >
+                          <img
+                            src={m.url}
+                            alt=""
+                            loading="lazy"
+                            className="mx-auto max-h-[340px] w-auto max-w-full cursor-zoom-in object-contain"
+                          />
+                        </button>
                       )}
                       {m.type === 'video' && m.url && (
-                        <VideoPlayer src={m.url} poster={m.posterUrl} className="border border-line" />
+                        <VideoPlayer
+                          src={m.url}
+                          poster={m.posterUrl}
+                          className="max-h-[340px] border border-line"
+                        />
                       )}
                       {m.type === 'song' && m.youtubeVideoId && (
                         <ThemeSongCard
@@ -347,6 +367,28 @@ export function MapView({ user, onUserClick }: MapViewProps) {
                   ))}
                 </div>
               )}
+
+              {/* 5. The map, last and small. It is context for the name, not
+                  the subject — 128px rather than the 160px+ that made it read
+                  as the main content. Coordinates live under it, which is the
+                  only place they are shown at all now. */}
+              <div className="pt-1">
+                <PinMap
+                  center={[openPin.latitude, openPin.longitude]}
+                  zoom={15}
+                  pins={[{
+                    id: openPin.id,
+                    latitude: openPin.latitude,
+                    longitude: openPin.longitude,
+                    color: colorOf.get(openPin.spaceId),
+                  }]}
+                  className="h-32"
+                />
+                <p className="mt-1.5 flex items-center gap-1.5 text-[11px] tabular-nums text-subtle">
+                  <MapPinIcon size={11} className="shrink-0" />
+                  {openPin.latitude.toFixed(5)}, {openPin.longitude.toFixed(5)}
+                </p>
+              </div>
             </ModalBody>
           </Modal>
         )}

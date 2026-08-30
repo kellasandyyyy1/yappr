@@ -7,9 +7,10 @@ import { cn } from '../lib/utils';
 /**
  * Leaflet map, styled for this app.
  *
- * OpenStreetMap data via CartoDB's dark basemap: free, no key, no billing, and
- * dark enough not to be a white rectangle in the middle of a dark app. The
- * light default would have been the only bright surface in the product.
+ * OpenStreetMap's own tiles, darkened by a CSS filter on the tile pane (see
+ * .map-dark in index.css). CARTO's dark basemap was the original choice on the
+ * understanding it was keyless; it now stamps unauthenticated tiles with a
+ * diagonal "API KEY REQUIRED", so it is not usable without one.
  *
  * Leaflet's own marker is a red PNG loaded from the package's dist folder,
  * which both clashes with the accent colour and breaks under a bundler that
@@ -133,7 +134,7 @@ export function PinMap({
   const draftIcon = useMemo(() => pinIcon('#f87171'), []);
 
   return (
-    <div className={cn('relative overflow-hidden rounded-2xl border border-line', className)}>
+    <div className={cn('map-dark relative overflow-hidden rounded-2xl border border-line', className)}>
       <MapContainer
         center={center ?? FALLBACK_CENTER}
         zoom={zoom}
@@ -157,13 +158,20 @@ export function PinMap({
         // flashes white while they load.
         style={{ background: '#0d0d12' }}
       >
+        {/* OpenStreetMap's own tiles. CARTO's dark basemap was used here
+            first, on the understanding it needed no key — it now watermarks
+            unauthenticated tiles with a diagonal "API KEY REQUIRED", which is
+            what was showing on the map. These need no key; the .map-dark
+            filter on the wrapper does the darkening.
+
+            OSM's tile usage policy asks for a valid identifying User-Agent
+            and rules out heavy use. A browser cannot set User-Agent, so this
+            relies on the Referer the browser sends — fine at this scale, not
+            something to lean on if the app grows. */}
         <TileLayer
-          url="https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png"
-          // OpenStreetMap's licence requires attribution, and CartoDB's terms
-          // require crediting them for the tiles. Not optional.
-          attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> &copy; <a href="https://carto.com/attributions">CARTO</a>'
-          subdomains="abcd"
-          maxZoom={20}
+          url="https://tile.openstreetmap.org/{z}/{x}/{y}.png"
+          attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
+          maxZoom={19}
         />
 
         <Recenter center={center ?? null} zoom={zoom} />

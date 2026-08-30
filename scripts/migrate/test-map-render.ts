@@ -43,6 +43,28 @@ console.log('1. Leaflet');
   ? ok('the wrapper is positioned', 'inset-0 needs a positioned ancestor')
   : bad('the wrapper is positioned', 'absolute inset-0 would escape to the page');
 
+// Tile provider. CARTO's dark basemap now stamps unauthenticated tiles with a
+// diagonal "API KEY REQUIRED" — verified by fetching one and looking at it —
+// so it cannot be used keyless, whatever its docs once said.
+/basemaps.cartocdn.com/.test(pinMap)
+  ? bad('no CARTO tiles without a key', 'unauthenticated CARTO tiles are watermarked')
+  : ok('no CARTO tiles without a key');
+
+/tile.openstreetmap.org/.test(pinMap)
+  ? ok('tiles come from OpenStreetMap', 'genuinely keyless')
+  : bad('tiles come from OpenStreetMap');
+
+/map-dark/.test(pinMap)
+  ? ok('the dark filter class is applied', '.map-dark on the wrapper')
+  : bad('the dark filter class is applied', 'the map will be a bright rectangle');
+
+{
+  const css = fs.readFileSync('src/index.css', 'utf8');
+  /.map-dark .leaflet-tile-pane/.test(css)
+    ? ok('the filter targets the TILE PANE only', 'markers and controls stay uninverted')
+    : bad('the filter targets the tile pane only');
+}
+
 // --- 2. Every caller gives it a height ---------------------------------------
 console.log('\n2. Callers');
 const callers = ['src/components/MapView.tsx', 'src/components/CreatePinModal.tsx'];

@@ -38,6 +38,7 @@ interface DraftMedia {
 export function CreatePinModal({ user, space, onClose, onCreated }: CreatePinModalProps) {
   const [step, setStep] = useState<'place' | 'attach'>('place');
   const [draft, setDraft] = useState<{ latitude: number; longitude: number } | null>(null);
+  const [placeName, setPlaceName] = useState('');
   const [caption, setCaption] = useState('');
   const [media, setMedia] = useState<DraftMedia[]>([]);
   const [showSongSearch, setShowSongSearch] = useState(false);
@@ -135,6 +136,7 @@ export function CreatePinModal({ user, space, onClose, onCreated }: CreatePinMod
         creatorId: user.uid,
         latitude: draft.latitude,
         longitude: draft.longitude,
+        name: placeName,
         caption,
         media: uploaded,
       });
@@ -201,12 +203,23 @@ export function CreatePinModal({ user, space, onClose, onCreated }: CreatePinMod
                 No location permission is needed — you can pan and tap anywhere.
               </p>
             )}
+            {/* The name leads, because it is what the pin means. The
+                coordinates are a footnote below the map. */}
             <input
+              value={placeName}
+              onChange={(e) => setPlaceName(e.target.value)}
+              maxLength={80}
+              placeholder="Name this place — 'Where we watched the fireworks'"
+              className="field text-base font-semibold"
+            />
+
+            <textarea
               value={caption}
               onChange={(e) => setCaption(e.target.value)}
               maxLength={500}
-              placeholder="What happened here? (optional)"
-              className="field"
+              rows={2}
+              placeholder="A few words about it… (optional)"
+              className="field resize-none"
             />
           </div>
         ) : (

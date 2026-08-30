@@ -49,6 +49,9 @@ export interface Pin {
   creatorId: string;
   latitude: number;
   longitude: number;
+  /** The place name — the pin's title. */
+  name?: string;
+  /** A few words about the memory. */
   caption?: string;
   createdAt: string;
   creator?: User;
@@ -63,7 +66,7 @@ const SPACE_SELECT = `
 `;
 
 const PIN_SELECT = `
-  id, space_id, creator_id, latitude, longitude, caption, created_at,
+  id, space_id, creator_id, latitude, longitude, name, caption, created_at,
   users!pins_creator_id_fkey(${USER_FIELDS}),
   pin_media(id, media_type, media_url, youtube_video_id, poster_url, order_index)
 `;
@@ -105,6 +108,7 @@ const mapPin = (row: any): Pin => ({
   // and "51.5" turns into NaN the moment arithmetic touches it.
   latitude: Number(row.latitude),
   longitude: Number(row.longitude),
+  name: row.name ?? undefined,
   caption: row.caption ?? undefined,
   createdAt: row.created_at,
   creator: mapUser(row.users),
@@ -230,6 +234,7 @@ export const pins = {
     creatorId: string;
     latitude: number;
     longitude: number;
+    name?: string | null;
     caption?: string | null;
     media?: Array<{
       type: PinMediaType;
@@ -245,6 +250,7 @@ export const pins = {
         creator_id: input.creatorId,
         latitude: input.latitude,
         longitude: input.longitude,
+        name: input.name?.trim() || null,
         caption: input.caption?.trim() || null,
       })
       .select('id')
