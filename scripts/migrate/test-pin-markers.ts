@@ -135,27 +135,69 @@ console.log('\n3. Locket detail card');
   ? ok('the heading labels the dialog', 'aria-labelledby points at it')
   : bad('the heading labels the dialog');
 
-// Banner crop, not letterbox.
-/h-\[150px\] w-full overflow-hidden/.test(mapView) && /object-cover/.test(mapView)
-  ? ok('photos are cropped to a banner', '150px, object-cover')
-  : bad('photos are cropped to a banner');
+// Cover strip, then the gallery. The distinction is the whole point of this
+// layout: the crop is decoration, the grid is the photo.
+/h-28 w-full overflow-hidden rounded-xl/.test(mapView)
+  ? ok('the cover is a small strip', '112px, inside the 100-120 the brief asks for')
+  : bad('the cover is a small strip');
 
-/max-h-\[340px\] w-auto max-w-full cursor-zoom-in object-contain/.test(mapView)
-  ? bad('the letterboxed photo is gone', 'object-contain is still there')
-  : ok('the letterboxed photo is gone');
+/<img src={cover} alt="" loading="lazy" className="h-full w-full object-cover"/.test(mapView)
+  ? ok('the cover crops to fill', 'object-cover')
+  : bad('the cover crops to fill');
+
+// A tappable cover would put a second hit target on the same picture, a
+// thumb-width above the grid copy that already opens it.
+{
+  const coverBlock = mapView.slice(mapView.indexOf('{cover && ('), mapView.indexOf('{cover && (') + 300);
+  /<button/.test(coverBlock)
+    ? bad('the cover is decoration, not a second viewer', 'it is a button')
+    : ok('the cover is decoration, not a second viewer');
+}
+
+// Nothing in the gallery is cropped — that is what the cover is for.
+/w-full cursor-zoom-in object-contain/.test(mapView)
+  ? ok('gallery photos keep their aspect ratio', 'object-contain, no crop')
+  : bad('gallery photos keep their aspect ratio');
+
+mapView.includes(`photos.length > 1 ? 'grid-cols-2' : 'grid-cols-1'`)
+  ? ok('two columns from two photos up', 'a lone photo spans the card')
+  : bad('two columns from two photos up');
+
+// One photo must render twice, as cover and as gallery. Dropping the first
+// from the grid is the obvious "fix" for the repetition and is wrong: a
+// single-photo pin would then have a crop and no full view of it at all.
+mapView.includes('const cover = photos[0]?.url') && !mapView.includes('photos.slice(1)')
+  ? ok('the cover photo is still in the grid', 'one photo shows up twice, by design')
+  : bad('the cover photo is still in the grid');
+
+mapView.includes('onClick={() => setViewingImage(m.url!)}')
+  ? ok('tapping a gallery photo opens it full size')
+  : bad('tapping a gallery photo opens it full size');
 
 /Tap to expand/.test(mapView)
-  ? ok('the crop says the full image is a tap away')
-  : bad('the crop says the full image is a tap away');
+  ? ok('the gallery says the full image is a tap away')
+  : bad('the gallery says the full image is a tap away');
 
-// Songs belong to the content group at the top, not a block above the map.
+// Video is played, not browsed, so it stays out of the thumbnail grid.
 {
-  const contentIdx = mapView.indexOf('content of the memory');
+  const gridIdx = mapView.indexOf('grid-cols-2');
+  const videoIdx = mapView.indexOf('{videos.map(');
+  gridIdx !== -1 && videoIdx > gridIdx
+    ? ok('video keeps its own full-width block', 'after the grid')
+    : bad('video keeps its own full-width block');
+}
+
+// The song sits between the cover and the gallery: reachable without
+// scrolling past a column of photos, but not above the picture of the place.
+{
+  const coverIdx = mapView.indexOf('{cover && (');
   const songIdx = mapView.indexOf('<ThemeSongCard');
+  const gridIdx = mapView.indexOf("'grid gap-2',");
   const mapIdx = mapView.indexOf('The map, last and small');
-  contentIdx !== -1 && songIdx > contentIdx && songIdx < mapIdx
-    ? ok('the song sits in the top content group', 'above the map, under the photos')
-    : bad('the song sits in the top content group');
+  coverIdx !== -1 && songIdx > coverIdx && songIdx < gridIdx && gridIdx < mapIdx
+    ? ok('the song sits under the cover, above the gallery')
+    : bad('the song sits under the cover, above the gallery',
+        `cover ${coverIdx}, song ${songIdx}, grid ${gridIdx}`);
 }
 
 /ThemeSongCard\s+className="max-w-none"/.test(mapView)

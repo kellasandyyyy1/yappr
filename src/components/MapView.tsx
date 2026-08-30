@@ -381,73 +381,108 @@ export function MapView({ user, onUserClick }: MapViewProps) {
                 </p>
               )}
 
-              {/* The content of the memory: pictures first, then anything
-                  playable, grouped together directly under the header.
+              {/* The content of the memory: a cover, the song, then the
+                  pictures at full size.
 
-                  Photos are cropped to a 150px banner rather than letterboxed
-                  at full height. A poster or a portrait shot was previously
-                  340px of card with black bars either side, which made the
-                  image the whole view; a banner reads as part of the card and
-                  leaves room for everything below it. Tapping still opens the
-                  uncropped original, so nothing is lost — only deferred. */}
+                  The banner is decoration, not the photo viewer. It crops the
+                  first picture to a strip so the card opens on something of
+                  the place rather than on text — the actual photos live in the
+                  grid below, uncropped, where a portrait shot is not sliced
+                  through the middle. One photo therefore appears twice, as the
+                  cover and again in the grid, which is deliberate: every pin
+                  then has the same shape whether it holds one picture or six. */}
               {resolved === null ? (
                 <div className="flex justify-center py-6">
                   <Loader2 size={18} className="animate-spin text-subtle" />
                 </div>
               ) : resolved.length === 0 ? null : (
-                <div className="space-y-2">
-                  {/* Pictures and video, in attachment order. */}
-                  {resolved.filter((m) => m.type !== 'song').map((m) => (
-                    <div key={m.id}>
-                      {m.type === 'photo' && m.url && (
-                        <button
-                          type="button"
-                          onClick={() => setViewingImage(m.url!)}
-                          aria-label="Open photo"
-                          className="group/banner relative block h-[150px] w-full overflow-hidden rounded-xl border border-line bg-black"
-                        >
-                          <img
-                            src={m.url}
-                            alt=""
-                            loading="lazy"
-                            className="h-full w-full cursor-zoom-in object-cover transition-transform duration-200 group-hover/banner:scale-[1.02]"
-                          />
-                          {/* A crop hides most of a tall image, so say that the
-                              full one is a tap away rather than leaving it to
-                              be discovered. */}
-                          <span className="pointer-events-none absolute bottom-1.5 right-1.5 rounded-md bg-black/65 px-1.5 py-0.5 text-[10px] font-medium text-white opacity-0 transition-opacity group-hover/banner:opacity-100">
-                            Tap to expand
-                          </span>
-                        </button>
-                      )}
-                      {m.type === 'video' && m.url && (
-                        <VideoPlayer
-                          src={m.url}
-                          poster={m.posterUrl}
-                          className="max-h-[240px] border border-line"
-                        />
-                      )}
-                    </div>
-                  ))}
+                (() => {
+                  const photos = resolved.filter((m) => m.type === 'photo' && m.url);
+                  const videos = resolved.filter((m) => m.type === 'video' && m.url);
+                  const songs = resolved.filter((m) => m.type === 'song' && m.youtubeVideoId);
+                  const cover = photos[0]?.url;
 
-                  {/* Songs, stacked straight under the pictures. ThemeSongCard
-                      is the compact chip from the feed — cover, title, play —
-                      not a standalone player block. */}
-                  {resolved.filter((m) => m.type === 'song' && m.youtubeVideoId).map((m) => (
-                    <div key={m.id}>
-                      <ThemeSongCard
-                        className="max-w-none"
-                        song={{
-                          youtubeId: m.youtubeVideoId!,
-                          title: 'Attached song',
-                          artist: '',
-                          coverUrl: `https://i.ytimg.com/vi/${m.youtubeVideoId}/mqdefault.jpg`,
-                          startTime: 0,
-                        }}
-                      />
+                  return (
+                    <div className="space-y-2">
+                      {/* Cover. Not a button: tapping it would duplicate the
+                          grid image directly below and give the same picture
+                          two hit targets a thumb-width apart. */}
+                      {cover && (
+                        <div className="h-28 w-full overflow-hidden rounded-xl border border-line bg-black">
+                          <img src={cover} alt="" loading="lazy" className="h-full w-full object-cover" />
+                        </div>
+                      )}
+
+                      {/* The song sits under the cover, above the pictures —
+                          it is the mood of the memory, so it should be reachable
+                          without scrolling past a column of photos. */}
+                      {songs.map((m) => (
+                        <div key={m.id}>
+                        <ThemeSongCard
+                          className="max-w-none"
+                          song={{
+                            youtubeId: m.youtubeVideoId!,
+                            title: 'Attached song',
+                            artist: '',
+                            coverUrl: `https://i.ytimg.com/vi/${m.youtubeVideoId}/mqdefault.jpg`,
+                            startTime: 0,
+                          }}
+                        />
+                        </div>
+                      ))}
+
+                      {/* The gallery. object-contain against a max height, so a
+                          panorama and a portrait both survive intact — the cell
+                          gives way to the picture rather than the other way
+                          round. Two columns from two photos up; a lone photo
+                          spans the card instead of sitting in a half-width
+                          column beside empty space. */}
+                      {photos.length > 0 && (
+                        <div
+                          className={cn(
+                            'grid gap-2',
+                            photos.length > 1 ? 'grid-cols-2' : 'grid-cols-1'
+                          )}
+                        >
+                          {photos.map((m) => (
+                            <button
+                              key={m.id}
+                              type="button"
+                              onClick={() => setViewingImage(m.url!)}
+                              aria-label="Open photo full size"
+                              className="group/shot relative block overflow-hidden rounded-xl border border-line bg-elev/60"
+                            >
+                              <img
+                                src={m.url}
+                                alt=""
+                                loading="lazy"
+                                className={cn(
+                                  'w-full cursor-zoom-in object-contain transition-transform duration-200 group-hover/shot:scale-[1.02]',
+                                  photos.length > 1 ? 'max-h-[220px]' : 'max-h-[340px]'
+                                )}
+                              />
+                              <span className="pointer-events-none absolute bottom-1.5 right-1.5 rounded-md bg-black/65 px-1.5 py-0.5 text-[10px] font-medium text-white opacity-0 transition-opacity group-hover/shot:opacity-100">
+                                Tap to expand
+                              </span>
+                            </button>
+                          ))}
+                        </div>
+                      )}
+
+                      {/* Video keeps its own full-width block. It is played, not
+                          browsed, so it does not belong in a thumbnail grid. */}
+                      {videos.map((m) => (
+                        <div key={m.id}>
+                          <VideoPlayer
+                            src={m.url!}
+                            poster={m.posterUrl}
+                            className="max-h-[240px] border border-line"
+                          />
+                        </div>
+                      ))}
                     </div>
-                  ))}
-                </div>
+                  );
+                })()
               )}
 
               {/* 5. The map, last and small. It is context for the name, not
