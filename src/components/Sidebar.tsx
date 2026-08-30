@@ -1,12 +1,12 @@
 import React from 'react';
-import { Home, MessageCircle, Bell, User as UserIcon, Search, PenSquare } from 'lucide-react';
+import { Home, MessageCircle, Bell, User as UserIcon, Search, PenSquare, MapPin } from 'lucide-react';
 import { View, User } from '../types';
 import { cn } from '../lib/utils';
 import { Avatar } from './Avatar';
 import { Logo } from './Logo';
 
 export interface NavItem {
-  id: Extract<View, 'feed' | 'search' | 'chat' | 'notifications' | 'profile'>;
+  id: Extract<View, 'feed' | 'search' | 'map' | 'chat' | 'notifications' | 'profile'>;
   icon: typeof Home;
   label: string;
 }
@@ -16,6 +16,7 @@ export interface NavItem {
 export const NAV_ITEMS: NavItem[] = [
   { id: 'feed', icon: Home, label: 'Feed' },
   { id: 'search', icon: Search, label: 'Explore' },
+  { id: 'map', icon: MapPin, label: 'Map' },
   { id: 'chat', icon: MessageCircle, label: 'Messages' },
   { id: 'notifications', icon: Bell, label: 'Notifications' },
   { id: 'profile', icon: UserIcon, label: 'Profile' },

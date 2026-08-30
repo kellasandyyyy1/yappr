@@ -233,6 +233,9 @@ async function startServer() {
           // GIPHY serves GIFs from media0..media4.giphy.com and i.giphy.com
           // depending on the rendition.
           "https://*.giphy.com",
+          // Leaflet map tiles. CartoDB's dark basemap, served from
+          // a.. d.basemaps.cartocdn.com — no key, no billing.
+          "https://*.basemaps.cartocdn.com",
         ].join(" "),
         [
           "media-src 'self' blob: data:",

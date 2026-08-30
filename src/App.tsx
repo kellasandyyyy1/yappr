@@ -24,6 +24,7 @@ import { ToastProvider } from './components/ToastContext';
 import { motion, AnimatePresence } from 'motion/react';
 import { cn } from './lib/utils';
 import { LegalPage } from './components/LegalPage';
+import { MapView } from './components/MapView';
 import { ResetPasswordView } from './components/ResetPasswordView';
 import { usePathname, isPublicRoute, normalizePath, navigate } from './lib/router';
 import { parseProfileQr } from './lib/brand';
@@ -355,6 +356,17 @@ export default function App() {
                   }}
                   onBack={() => setCurrentView('feed')}
                   onScanClick={() => setIsScanning(true)}
+                />
+              </motion.div>
+            )}
+            {currentView === 'map' && user && (
+              <motion.div key="map" {...pageMotion} className="flex min-h-0 flex-1 flex-col">
+                <MapView
+                  user={user}
+                  onUserClick={(uid) => {
+                    setViewingProfileId(uid);
+                    setCurrentView('profile');
+                  }}
                 />
               </motion.div>
             )}

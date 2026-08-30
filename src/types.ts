@@ -149,4 +149,4 @@ export interface MusicHistory {
   createdAt: any;
 }
 
-export type View = 'feed' | 'chat' | 'profile' | 'notifications' | 'search' | 'settings' | 'auth';
+export type View = 'feed' | 'chat' | 'profile' | 'notifications' | 'search' | 'map' | 'settings' | 'auth';
