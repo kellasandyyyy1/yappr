@@ -8,7 +8,7 @@ import {
 } from '../lib/db';
 import { User, Message, Chat } from '../types';
 import { motion, AnimatePresence } from 'motion/react';
-import { Send, ChevronLeft, Search, Plus, X, UserPlus, Trash2, MessageSquare, Mic, Image as ImageIcon, Loader2, Play, Pause, Square, Volume2, Check, CheckCheck, Clock, Reply, AtSign, Users, MoreVertical, LogOut, Settings as SettingsIcon, Camera, Eye, EyeOff } from 'lucide-react';
+import { Send, ChevronLeft, Search, Plus, X, UserPlus, Trash2, MessageSquare, Mic, Image as ImageIcon, Loader2, Play, Pause, Square, Volume2, Check, CheckCheck, Clock, Reply, AtSign, Users, MoreVertical, LogOut, Settings as SettingsIcon, Camera, Eye, EyeOff, Film } from 'lucide-react';
 import { ImageViewer } from './ImageViewer';
 import { VoiceMessage } from './VoiceMessage';
 import { EmojiReactions, EmojiPickerButton } from './EmojiReactions';
@@ -19,6 +19,8 @@ import { ConfirmDialog } from './Modal';
 import { moderatePreview } from '../lib/moderation';
 import { cn, formatTimeAgo } from '../lib/utils';
 import { messageTime, formatClock, startsNewCluster } from '../lib/messageGroups';
+import { GifPicker } from './GifPicker';
+import { Gif } from '../lib/tenor';
 import { useToast } from './ToastContext';
 import { sendPushNotification } from '../lib/sendPush';
 
@@ -195,6 +197,7 @@ export function ChatView({ user, onProfileClick, onUserClick, onChatOpenChange, 
   const [isRecording, setIsRecording] = useState(false);
   const [recordingTime, setRecordingTime] = useState(0);
   const [pendingAttachment, setPendingAttachment] = useState<{ type: 'image' | 'voice'; url: string } | null>(null);
+  const [showGifPicker, setShowGifPicker] = useState(false);
   const [viewingImage, setViewingImage] = useState<string | null>(null);
   const [replyingTo, setReplyingTo] = useState<Message | null>(null);
   const [showGroupDetails, setShowGroupDetails] = useState(false);
@@ -633,6 +636,47 @@ export function ChatView({ user, onProfileClick, onUserClick, onChatOpenChange, 
       reader.readAsDataURL(file);
     } catch (err) {
       console.error('Error reading image:', err);
+    }
+  };
+
+  /**
+   * Sends a GIF.
+   *
+   * Deliberately not routed through confirmAndSendAttachment: that one
+   * downloads the bytes and re-uploads them to the private `chat` bucket,
+   * which is right for a photo off the device and wrong for a GIF. Tenor
+   * already hosts it at a stable public URL, and re-hosting would cost
+   * storage and bandwidth to end up with the same pixels.
+   *
+   * It is sent as type "image" with a plain https URL, so it renders through
+   * the existing bubble and animates — <img> animates GIFs natively.
+   */
+  const sendGif = async (gif: Gif) => {
+    if (!selectedChat) return;
+    setShowGifPicker(false);
+    setIsSubmitting(true);
+
+    try {
+      await chatsApi.send({
+        conversationId: selectedChat.id,
+        senderId: user.uid,
+        content: 'Sent a GIF',
+        type: 'image',
+        imageUrl: gif.url,
+        voiceUrl: null,
+        replyToId: replyingTo?.id ?? null,
+      });
+
+      const others = selectedChat.participants.filter((pid) => pid !== user.uid);
+      const title = selectedChat.type === 'group' ? (selectedChat.name ?? 'Group') : user.displayName;
+      others.forEach((pid) => sendPushNotification(pid, title, 'Sent a GIF', `/chat?id=${selectedChat.id}`));
+
+      setReplyingTo(null);
+    } catch (err) {
+      console.error('Error sending GIF:', err);
+      toast('Could not send that GIF', 'error');
+    } finally {
+      setIsSubmitting(false);
     }
   };
 
@@ -1405,6 +1449,15 @@ export function ChatView({ user, onProfileClick, onUserClick, onChatOpenChange, 
                     >
                       <ImageIcon size={18} />
                     </button>
+                    <button
+                      type="button"
+                      onClick={() => setShowGifPicker(true)}
+                      aria-label="Send a GIF"
+                      title="Send a GIF"
+                      className="w-10 h-10 rounded-full hover:bg-surface-2 flex items-center justify-center text-muted hover:text-fg transition-colors"
+                    >
+                      <Film size={18} />
+                    </button>
                     <button 
                       type="button" 
                       onClick={startRecording}
@@ -1432,6 +1485,13 @@ export function ChatView({ user, onProfileClick, onUserClick, onChatOpenChange, 
         </div>
 
         {/* Action Confirmation */}
+        {showGifPicker && (
+          <GifPicker
+            onClose={() => setShowGifPicker(false)}
+            onSelect={sendGif}
+          />
+        )}
+
         <AnimatePresence>
           {viewingImage && (
             <ImageViewer url={viewingImage} onClose={() => setViewingImage(null)} />

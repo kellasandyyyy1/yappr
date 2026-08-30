@@ -230,6 +230,9 @@ async function startServer() {
           "https://*.googleusercontent.com",
           "https://img.youtube.com",
           "https://i.ytimg.com",
+          // Tenor serves GIFs from media.tenor.com, media1..media9, and
+          // c.tenor.com depending on the asset.
+          "https://*.tenor.com",
         ].join(" "),
         [
           "media-src 'self' blob: data:",
@@ -402,6 +405,38 @@ async function startServer() {
     } catch (err) {
       console.error("youtube-search failed:", err);
       return res.status(502).json({ error: "Song search failed" });
+    }
+  });
+
+  /**
+   * GET /api/gif-search — the dev-server twin of api/gif-search.ts.
+   *
+   * npm run dev serves the app through this file, not through Vercel's
+   * functions, so without this route GIF search only works in production.
+   * Both share api/_tenor.ts so the behaviour cannot drift.
+   */
+  app.get("/api/gif-search", requireSupabaseAuth, async (req, res) => {
+    const apiKey = process.env.TENOR_API_KEY;
+    if (!apiKey) {
+      console.error("TENOR_API_KEY is not set — GIF search is disabled");
+      return res.status(503).json({ error: "GIF search is not configured" });
+    }
+
+    const q = typeof req.query.q === "string" ? req.query.q : "";
+
+    try {
+      const { searchGifs, TenorSearchError } = await import("./api/_tenor");
+      try {
+        return res.json({ gifs: await searchGifs(q, apiKey) });
+      } catch (err) {
+        if (err instanceof TenorSearchError) {
+          return res.status(err.status).json({ error: err.message });
+        }
+        throw err;
+      }
+    } catch (err) {
+      console.error("gif-search failed:", err);
+      return res.status(502).json({ error: "GIF search failed" });
     }
   });
 

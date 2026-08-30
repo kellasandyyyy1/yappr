@@ -53,12 +53,13 @@ client bundle** — never put a secret behind that prefix.
 | `VAPID_PRIVATE_KEY` | **server only** | Web Push signing key |
 | `VAPID_SUBJECT` | server | `mailto:` contact for push. Defaults to `mailto:support@yappr.app`. |
 | `YOUTUBE_API_KEY` | **server only** | YouTube Data API v3 key for in-app song search. Never expose it: the quota is billable and shared by every user. Restrict it to the YouTube Data API in Google Cloud Console. |
+| `TENOR_API_KEY` | **server only** | Tenor v2 key for GIF search. Proxied through `/api/gif-search`; never exposed to the browser. |
 | `GEMINI_API_KEY` | build | Only if the Gemini integration is used |
 
 Check what the deployed function can actually see:
 
 ```
-GET /api/health   →   { config: { vapidPrivateKey: true, youtubeApiKey: true, ... } }
+GET /api/health   →   { config: { vapidPrivateKey: true, youtubeApiKey: true, tenorApiKey: true, ... } }
 ```
 
 It reports presence, never values.

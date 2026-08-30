@@ -9,12 +9,14 @@ import {
 import { uploadFile, UploadError } from '../lib/supabase';
 import { User, ThemeSong, PostVisibility } from '../types';
 import { motion, AnimatePresence } from 'motion/react';
-import { X, Image as ImageIcon, Loader2, Mic, Square, Trash2, AtSign, Music, Globe, Users as UsersIcon, Lock, Check, ChevronDown } from 'lucide-react';
+import { X, Image as ImageIcon, Loader2, Mic, Square, Trash2, AtSign, Music, Globe, Users as UsersIcon, Lock, Check, ChevronDown, Film } from 'lucide-react';
 import { cn } from '../lib/utils';
 import { sendPushNotification } from '../lib/sendPush';
 import { VoiceMessage } from './VoiceMessage';
 import { useToast } from './ToastContext';
 import { ThemeSongSearch } from './ThemeSongSearch';
+import { GifPicker } from './GifPicker';
+import { Gif } from '../lib/tenor';
 import { Avatar } from './Avatar';
 import { Modal, ModalHeader, ModalBody, ModalFooter } from './Modal';
 
@@ -44,6 +46,8 @@ export function CreatePostModal({ user, onClose, onSuccess }: CreatePostModalPro
   const [recordingTime, setRecordingTime] = useState(0);
   const [pendingVoice, setPendingVoice] = useState<{ url: string; blob: Blob } | null>(null);
   const [selectedSong, setSelectedSong] = useState<ThemeSong | null>(null);
+  const [selectedGif, setSelectedGif] = useState<Gif | null>(null);
+  const [showGifPicker, setShowGifPicker] = useState(false);
   const [showMusicSearch, setShowMusicSearch] = useState(false);
   const [visibility, setVisibility] = useState<PostVisibility>('public');
   const [showVisibilityMenu, setShowVisibilityMenu] = useState(false);
@@ -140,17 +144,23 @@ export function CreatePostModal({ user, onClose, onSuccess }: CreatePostModalPro
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!content.trim() && selectedImages.length === 0 && !pendingVoice && !selectedSong) return;
+    if (!content.trim() && selectedImages.length === 0 && !pendingVoice && !selectedSong && !selectedGif) return;
     
     setIsPosting(true);
     try {
       // Images upload in parallel — the old loop was strictly sequential, so a
       // four-image post waited out four round trips end to end.
-      const imageUrls = await Promise.all(
+      const uploaded = await Promise.all(
         selectedImages.map((file, index) =>
           uploadFile('posts', `${user.uid}/${Date.now()}-${index}-${file.name}`, file, file.type)
         )
       );
+
+      // A GIF is never uploaded. Tenor already hosts it, re-hosting would cost
+      // storage and bandwidth for nothing, and as a plain URL it rides the
+      // existing imageUrls path — so it renders through exactly the same code as
+      // any other post image, and animates because <img> animates GIFs.
+      const imageUrls = selectedGif ? [...uploaded, selectedGif.url] : uploaded;
 
       // A voice note used to be stored as a base64 data URL inside the post
       // document. Postgres has no 1MB row ceiling to trip over, but a text
@@ -172,7 +182,7 @@ export function CreatePostModal({ user, onClose, onSuccess }: CreatePostModalPro
       const postId = await postsApi.create({
         userId: user.uid,
         content: content || (pendingVoice ? 'Shared a voice message' : (selectedSong ? 'Soundtrack for today' : '')),
-        type: pendingVoice ? 'voice' : (selectedImages.length > 0 ? 'image' : 'text'),
+        type: pendingVoice ? 'voice' : (imageUrls.length > 0 ? 'image' : 'text'),
         visibility,
         imageUrls,
         voiceUrl,
@@ -295,7 +305,7 @@ export function CreatePostModal({ user, onClose, onSuccess }: CreatePostModalPro
   };
 
   const canSubmit =
-    !!content.trim() || selectedImages.length > 0 || !!pendingVoice || !!selectedSong;
+    !!content.trim() || selectedImages.length > 0 || !!pendingVoice || !!selectedSong || !!selectedGif;
   const activeVisibility =
     VISIBILITY_OPTIONS.find((o) => o.id === visibility) ?? VISIBILITY_OPTIONS[0];
   const VisibilityIcon = activeVisibility.icon;
@@ -382,6 +392,34 @@ export function CreatePostModal({ user, onClose, onSuccess }: CreatePostModalPro
                       <Trash2 size={16} />
                     </button>
                   </div>
+                </motion.div>
+              )}
+
+              {selectedGif && (
+                <motion.div
+                  initial={{ opacity: 0, scale: 0.95 }}
+                  animate={{ opacity: 1, scale: 1 }}
+                  exit={{ opacity: 0, scale: 0.95 }}
+                  className="relative w-fit overflow-hidden rounded-2xl border border-line"
+                >
+                  {/* The preview URL, not the full one — this is a thumbnail. */}
+                  <img
+                    src={selectedGif.previewUrl}
+                    alt={selectedGif.description}
+                    className="max-h-48 w-auto"
+                    referrerPolicy="no-referrer"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setSelectedGif(null)}
+                    aria-label="Remove GIF"
+                    className="absolute right-1.5 top-1.5 flex h-7 w-7 items-center justify-center rounded-full bg-black/70 text-white transition-colors hover:bg-black/90"
+                  >
+                    <X size={14} />
+                  </button>
+                  <span className="absolute bottom-1.5 left-1.5 rounded bg-black/70 px-1.5 py-0.5 text-[10px] font-semibold text-white">
+                    GIF
+                  </span>
                 </motion.div>
               )}
             </AnimatePresence>
@@ -552,6 +590,22 @@ export function CreatePostModal({ user, onClose, onSuccess }: CreatePostModalPro
 
             <button
               type="button"
+              onClick={() => setShowGifPicker(true)}
+              disabled={isRecording || !!pendingVoice}
+              title="Attach a GIF"
+              className={cn(
+                'flex h-11 items-center gap-2 rounded-xl border px-3 text-sm font-medium transition-colors duration-100 disabled:cursor-not-allowed disabled:opacity-40',
+                selectedGif
+                  ? 'border-accent/40 bg-accent/10 text-accent'
+                  : 'border-line bg-surface-2 text-muted hover:text-fg'
+              )}
+            >
+              <Film size={18} />
+              <span className="hidden sm:inline">GIF</span>
+            </button>
+
+            <button
+              type="button"
               onClick={startRecording}
               disabled={isRecording || !!pendingVoice || selectedImages.length > 0}
               title="Record a voice note"
@@ -603,6 +657,19 @@ export function CreatePostModal({ user, onClose, onSuccess }: CreatePostModalPro
           </div>
         </ModalFooter>
       </form>
+
+      <AnimatePresence>
+        {showGifPicker && (
+          <GifPicker
+            nested
+            onClose={() => setShowGifPicker(false)}
+            onSelect={(gif) => {
+              setSelectedGif(gif);
+              setShowGifPicker(false);
+            }}
+          />
+        )}
+      </AnimatePresence>
 
       <AnimatePresence>
         {showMusicSearch && (
