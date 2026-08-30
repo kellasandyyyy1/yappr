@@ -201,6 +201,7 @@ export function ChatView({ user, onProfileClick, onUserClick, onChatOpenChange, 
   const [recordingTime, setRecordingTime] = useState(0);
   const [pendingAttachment, setPendingAttachment] = useState<{ type: 'image' | 'voice'; url: string } | null>(null);
   const [showGifPicker, setShowGifPicker] = useState(false);
+  const [showAttachMenu, setShowAttachMenu] = useState(false);
   // Poster shown while the file goes up, plus 0..1 progress. A 40MB upload
   // with no feedback reads as a hang.
   const [videoUpload, setVideoUpload] = useState<{ posterUrl: string; progress: number } | null>(null);
@@ -1507,73 +1508,108 @@ export function ChatView({ user, onProfileClick, onUserClick, onChatOpenChange, 
             )}
           </AnimatePresence>
 
-          <div className="flex items-center gap-3">
-            <div className="flex-1 bg-surface-2 border border-line p-2 pl-6 rounded-3xl flex items-center gap-2">
+          {/* The send button must never be the thing that overflows.
+
+              It was: the text input is flex-1 but had no min-w-0, and a flex
+              item's min-width defaults to auto — for an <input> that resolves
+              to its intrinsic width, around 180px. So the pill could not
+              shrink, and at 375px the row needed roughly 452px against 343px
+              available. The overflow went to the last item in the row, which
+              is Send.
+
+              Two fixes, both needed. min-w-0 lets the pill actually shrink.
+              And below sm the four attachment buttons collapse into a single
+              "+" that opens a menu, because even a shrinkable pill leaves the
+              text field about 70px wide once four 40px icons are in it. */}
+          <div className="relative flex items-center gap-3">
+            <div className="flex min-w-0 flex-1 items-center gap-2 rounded-3xl border border-line bg-surface-2 p-2 pl-5">
               <input 
                 value={newMessage}
                 onChange={handleTyping}
                 placeholder={isRecording ? "SILENCE TO SEND..." : "MESSAGE..."}
                 disabled={isRecording || !!pendingAttachment}
-                className="flex-1 bg-transparent py-3 text-xs font-bold tracking-widest uppercase focus:outline-none placeholder:text-subtle disabled:opacity-50"
+                className="min-w-0 flex-1 bg-transparent py-3 text-xs font-bold uppercase tracking-widest placeholder:text-subtle focus:outline-none disabled:opacity-50"
                 onKeyDown={(e) => e.key === 'Enter' && handleSendMessage(e)}
               />
-              <div className="flex items-center gap-1">
-                <input 
-                  type="file" 
-                  ref={fileInputRef} 
-                  className="hidden" 
-                  accept="image/*"
-                  onChange={handleImageUpload}
-                />
-                {!isRecording && !pendingAttachment && (
-                  <>
-                    <button 
-                      type="button" 
-                      onClick={() => fileInputRef.current?.click()}
-                      className="w-10 h-10 rounded-full hover:bg-surface-2 flex items-center justify-center text-muted hover:text-fg transition-colors"
-                    >
-                      <ImageIcon size={18} />
-                    </button>
-                    <input
-                      type="file"
-                      ref={videoInputRef}
-                      onChange={handleVideoSelect}
-                      accept={VIDEO_ACCEPT}
-                      className="hidden"
-                    />
-                    <button
-                      type="button"
-                      onClick={() => videoInputRef.current?.click()}
-                      disabled={!!videoUpload}
-                      aria-label="Send a video"
-                      title="Send a video"
-                      className="w-10 h-10 rounded-full hover:bg-surface-2 flex items-center justify-center text-muted hover:text-fg transition-colors disabled:opacity-40"
-                    >
-                      <VideoIcon size={18} />
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => setShowGifPicker(true)}
-                      aria-label="Send a GIF"
-                      title="Send a GIF"
-                      className="w-10 h-10 rounded-full hover:bg-surface-2 flex items-center justify-center text-muted hover:text-fg transition-colors"
-                    >
-                      <Film size={18} />
-                    </button>
-                    <button 
-                      type="button" 
-                      onClick={startRecording}
-                      className="w-10 h-10 rounded-full hover:bg-surface-2 flex items-center justify-center text-muted hover:text-fg transition-colors"
-                    >
-                      <Mic size={18} />
-                    </button>
-                  </>
-                )}
-              </div>
+
+              {/* Both file inputs stay mounted whatever else renders — the
+                  mobile menu triggers the same refs, and a ref on a node that
+                  is conditionally unmounted is null when the menu calls it. */}
+              <input 
+                type="file" 
+                ref={fileInputRef} 
+                className="hidden" 
+                accept="image/*"
+                onChange={handleImageUpload}
+              />
+              <input
+                type="file"
+                ref={videoInputRef}
+                onChange={handleVideoSelect}
+                accept={VIDEO_ACCEPT}
+                className="hidden"
+              />
+
+              {!isRecording && !pendingAttachment && (
+                <div className="flex shrink-0 items-center gap-1">
+                  {/* Mobile: one button. */}
+                  <button
+                    type="button"
+                    onClick={() => setShowAttachMenu((v) => !v)}
+                    aria-haspopup="menu"
+                    aria-expanded={showAttachMenu}
+                    aria-label="Add an attachment"
+                    title="Add an attachment"
+                    className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full text-muted transition-colors hover:bg-surface-3 hover:text-fg sm:hidden"
+                  >
+                    <Plus size={19} className={cn('transition-transform duration-150', showAttachMenu && 'rotate-45')} />
+                  </button>
+
+                  {/* Desktop: all four, where there is room for them. */}
+                  <div className="hidden items-center gap-1 sm:flex">
+                  <button
+                    type="button"
+                    onClick={() => fileInputRef.current?.click()}
+                    aria-label="Photo"
+                    title="Photo"
+                    className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full text-muted transition-colors hover:bg-surface-3 hover:text-fg disabled:opacity-40"
+                  >
+                    <ImageIcon size={18} />
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => videoInputRef.current?.click()} disabled={!!videoUpload}
+                    aria-label="Video"
+                    title="Video"
+                    className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full text-muted transition-colors hover:bg-surface-3 hover:text-fg disabled:opacity-40"
+                  >
+                    <VideoIcon size={18} />
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setShowGifPicker(true)}
+                    aria-label="GIF"
+                    title="GIF"
+                    className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full text-muted transition-colors hover:bg-surface-3 hover:text-fg disabled:opacity-40"
+                  >
+                    <Film size={18} />
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => startRecording()}
+                    aria-label="Voice"
+                    title="Voice"
+                    className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full text-muted transition-colors hover:bg-surface-3 hover:text-fg disabled:opacity-40"
+                  >
+                    <Mic size={18} />
+                  </button>
+                  </div>
+                </div>
+              )}
             </div>
-            
-            {/* At rest the button stays a solid, readable accent — it used to
-                drop to 20% opacity, which read as broken rather than disabled. */}
+
+            {/* shrink-0 and outside the pill, so it is never the element that
+                gets squeezed or pushed out. */}
             <button
               onClick={handleSendMessage}
               disabled={(!newMessage.trim() && !isSendingImage) || isRecording || !!pendingAttachment}
@@ -1583,6 +1619,53 @@ export function ChatView({ user, onProfileClick, onUserClick, onChatOpenChange, 
             >
               <Send size={19} />
             </button>
+
+            <AnimatePresence>
+              {showAttachMenu && (
+                <motion.div
+                  role="menu"
+                  initial={{ opacity: 0, y: 6 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  exit={{ opacity: 0, y: 6 }}
+                  transition={{ duration: 0.12 }}
+                  style={{ zIndex: 'var(--z-popover)' }}
+                  className="absolute bottom-full right-16 mb-2 w-44 overflow-hidden rounded-xl border border-line bg-surface shadow-[0_8px_24px_rgba(0,0,0,0.5)] sm:hidden"
+                >
+                  <button
+                    type="button"
+                    onClick={() => { setShowAttachMenu(false); fileInputRef.current?.click(); }}
+                    className="flex w-full items-center gap-3 px-3 py-2.5 text-left text-sm text-fg transition-colors hover:bg-surface-3 disabled:opacity-40"
+                  >
+                    <ImageIcon size={17} className="shrink-0 text-muted" />
+                    Photo
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => { setShowAttachMenu(false); videoInputRef.current?.click(); }} disabled={!!videoUpload}
+                    className="flex w-full items-center gap-3 px-3 py-2.5 text-left text-sm text-fg transition-colors hover:bg-surface-3 disabled:opacity-40"
+                  >
+                    <VideoIcon size={17} className="shrink-0 text-muted" />
+                    Video
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => { setShowAttachMenu(false); setShowGifPicker(true); }}
+                    className="flex w-full items-center gap-3 px-3 py-2.5 text-left text-sm text-fg transition-colors hover:bg-surface-3 disabled:opacity-40"
+                  >
+                    <Film size={17} className="shrink-0 text-muted" />
+                    GIF
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => { setShowAttachMenu(false); startRecording(); }}
+                    className="flex w-full items-center gap-3 px-3 py-2.5 text-left text-sm text-fg transition-colors hover:bg-surface-3 disabled:opacity-40"
+                  >
+                    <Mic size={17} className="shrink-0 text-muted" />
+                    Voice
+                  </button>
+                </motion.div>
+              )}
+            </AnimatePresence>
           </div>
         </div>
 
