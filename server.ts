@@ -230,9 +230,9 @@ async function startServer() {
           "https://*.googleusercontent.com",
           "https://img.youtube.com",
           "https://i.ytimg.com",
-          // Tenor serves GIFs from media.tenor.com, media1..media9, and
-          // c.tenor.com depending on the asset.
-          "https://*.tenor.com",
+          // GIPHY serves GIFs from media0..media4.giphy.com and i.giphy.com
+          // depending on the rendition.
+          "https://*.giphy.com",
         ].join(" "),
         [
           "media-src 'self' blob: data:",
@@ -413,23 +413,23 @@ async function startServer() {
    *
    * npm run dev serves the app through this file, not through Vercel's
    * functions, so without this route GIF search only works in production.
-   * Both share api/_tenor.ts so the behaviour cannot drift.
+   * Both share api/_giphy.ts so the behaviour cannot drift.
    */
   app.get("/api/gif-search", requireSupabaseAuth, async (req, res) => {
-    const apiKey = process.env.TENOR_API_KEY;
+    const apiKey = process.env.GIPHY_API_KEY;
     if (!apiKey) {
-      console.error("TENOR_API_KEY is not set — GIF search is disabled");
+      console.error("GIPHY_API_KEY is not set — GIF search is disabled");
       return res.status(503).json({ error: "GIF search is not configured" });
     }
 
     const q = typeof req.query.q === "string" ? req.query.q : "";
 
     try {
-      const { searchGifs, TenorSearchError } = await import("./api/_tenor");
+      const { searchGifs, GifSearchError } = await import("./api/_giphy");
       try {
         return res.json({ gifs: await searchGifs(q, apiKey) });
       } catch (err) {
-        if (err instanceof TenorSearchError) {
+        if (err instanceof GifSearchError) {
           return res.status(err.status).json({ error: err.message });
         }
         throw err;

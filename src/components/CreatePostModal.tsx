@@ -16,7 +16,7 @@ import { VoiceMessage } from './VoiceMessage';
 import { useToast } from './ToastContext';
 import { ThemeSongSearch } from './ThemeSongSearch';
 import { GifPicker } from './GifPicker';
-import { Gif } from '../lib/tenor';
+import { Gif } from '../lib/giphy';
 import { Avatar } from './Avatar';
 import { Modal, ModalHeader, ModalBody, ModalFooter } from './Modal';
 
@@ -156,7 +156,7 @@ export function CreatePostModal({ user, onClose, onSuccess }: CreatePostModalPro
         )
       );
 
-      // A GIF is never uploaded. Tenor already hosts it, re-hosting would cost
+      // A GIF is never uploaded. GIPHY already hosts it, re-hosting would cost
       // storage and bandwidth for nothing, and as a plain URL it rides the
       // existing imageUrls path — so it renders through exactly the same code as
       // any other post image, and animates because <img> animates GIFs.

@@ -3,17 +3,17 @@ import { supabase } from './supabase';
 /**
  * Client for the proxied GIF search at /api/gif-search.
  *
- * No API key here and no direct call to tenor.googleapis.com — the key stays
- * server-side (see api/_tenor.ts). The browser only talks to our own origin,
- * which is why no connect-src change was needed. The GIF *images* do load from
- * Tenor's CDN, so img-src allows https://*.tenor.com.
+ * No API key here and no direct call to GIPHY — the key stays server-side (see
+ * api/_giphy.ts). The browser only talks to our own origin, which is why no
+ * connect-src change was needed. The GIF *images* do load from GIPHY's CDN, so
+ * img-src allows https://*.giphy.com.
  */
 
 export interface Gif {
   id: string;
-  /** Full-size animated GIF — what gets stored on the post or message. */
+  /** The rendition attached to a post or message. */
   url: string;
-  /** Small animated GIF, for the picker grid and thumbnails. */
+  /** Small animated rendition, for the picker grid and thumbnails. */
   previewUrl: string;
   description: string;
   width: number;
@@ -23,7 +23,7 @@ export interface Gif {
 export class GifSearchError extends Error {}
 
 /**
- * Searches for GIFs. An empty query returns Tenor's featured set, so the picker
+ * Searches for GIFs. An empty query returns GIPHY's trending set, so the picker
  * has something to show before the first keystroke.
  *
  * Takes an AbortSignal because a type-ahead fires overlapping requests and the
@@ -43,8 +43,8 @@ export async function searchGifs(query: string, signal?: AbortSignal): Promise<G
 
   if (!res.ok) {
     // The endpoint returns a human-readable reason for the cases worth
-    // distinguishing — not configured, refused, rate limited — and showing it
-    // is the difference between "no results" and "it is broken".
+    // distinguishing — not configured, refused, hourly limit reached — and
+    // showing it is the difference between "no results" and "it is broken".
     const body = await res.json().catch(() => ({}));
     throw new GifSearchError(
       body?.error ||

@@ -1,20 +1,20 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node';
 import { createClient } from '@supabase/supabase-js';
-import { searchGifs, TenorSearchError } from './_tenor';
+import { searchGifs, GifSearchError } from './_giphy';
 
 /**
- * GET /api/gif-search?q=… — proxied Tenor search.
+ * GET /api/gif-search?q=… — proxied GIPHY search.
  *
- * Same shape as /api/youtube-search, for the same two reasons: TENOR_API_KEY
+ * Same shape as /api/youtube-search, for the same two reasons: GIPHY_API_KEY
  * must never reach the browser, and an unauthenticated proxy would let anyone
  * spend our rate limit without needing the key at all.
  *
- * An empty q returns Tenor's featured set, so the picker opens with content.
+ * An empty q returns GIPHY's trending set, so the picker opens with content.
  */
 
 const SUPABASE_URL = process.env.VITE_SUPABASE_URL;
 const SERVICE_ROLE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY;
-const TENOR_API_KEY = process.env.TENOR_API_KEY;
+const GIPHY_API_KEY = process.env.GIPHY_API_KEY;
 
 const admin =
   SUPABASE_URL && SERVICE_ROLE_KEY
@@ -27,7 +27,10 @@ const admin =
  * HONEST SCOPE: this Map lives in one warm lambda instance and Vercel runs
  * many, so it bounds a runaway client against a single instance and nothing
  * more. A global limit needs shared state (Vercel KV, or a counter table).
- * Deliberately not added here rather than left looking effective.
+ *
+ * It is also not the binding constraint: a beta GIPHY key allows 100 calls an
+ * HOUR for the whole app. The response cache in _giphy.ts is what actually
+ * keeps the feature alive until a production key is issued.
  */
 const RATE_WINDOW_MS = 60_000;
 const RATE_MAX = 40;
@@ -52,11 +55,11 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     res.setHeader('Allow', 'GET');
     return res.status(405).json({ error: 'Method not allowed' });
   }
-  if (!TENOR_API_KEY) {
+  if (!GIPHY_API_KEY) {
     // Named explicitly. "GIF search returns nothing" is otherwise
     // indistinguishable from "no results", and this project has already lost
     // time to exactly that ambiguity with VAPID.
-    console.error('TENOR_API_KEY is not set — GIF search is disabled');
+    console.error('GIPHY_API_KEY is not set — GIF search is disabled');
     return res.status(503).json({ error: 'GIF search is not configured' });
   }
   if (!admin) {
@@ -80,11 +83,11 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   const q = typeof req.query.q === 'string' ? req.query.q : '';
 
   try {
-    const gifs = await searchGifs(q, TENOR_API_KEY);
+    const gifs = await searchGifs(q, GIPHY_API_KEY);
     res.setHeader('Cache-Control', 'private, max-age=300');
     return res.status(200).json({ gifs });
   } catch (err) {
-    if (err instanceof TenorSearchError) {
+    if (err instanceof GifSearchError) {
       return res.status(err.status).json({ error: err.message });
     }
     console.error('gif-search failed:', err);

@@ -20,7 +20,7 @@ export default function handler(_req: VercelRequest, res: VercelResponse) {
       supabaseUrl: Boolean(process.env.VITE_SUPABASE_URL),
       supabaseServiceRoleKey: Boolean(process.env.SUPABASE_SERVICE_ROLE_KEY),
       youtubeApiKey: Boolean(process.env.YOUTUBE_API_KEY),
-      tenorApiKey: Boolean(process.env.TENOR_API_KEY),
+      giphyApiKey: Boolean(process.env.GIPHY_API_KEY),
     },
   });
 }

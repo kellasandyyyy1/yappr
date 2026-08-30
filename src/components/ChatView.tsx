@@ -20,7 +20,7 @@ import { moderatePreview } from '../lib/moderation';
 import { cn, formatTimeAgo } from '../lib/utils';
 import { messageTime, formatClock, startsNewCluster } from '../lib/messageGroups';
 import { GifPicker } from './GifPicker';
-import { Gif } from '../lib/tenor';
+import { Gif } from '../lib/giphy';
 import { useToast } from './ToastContext';
 import { sendPushNotification } from '../lib/sendPush';
 
@@ -644,7 +644,7 @@ export function ChatView({ user, onProfileClick, onUserClick, onChatOpenChange, 
    *
    * Deliberately not routed through confirmAndSendAttachment: that one
    * downloads the bytes and re-uploads them to the private `chat` bucket,
-   * which is right for a photo off the device and wrong for a GIF. Tenor
+   * which is right for a photo off the device and wrong for a GIF. GIPHY
    * already hosts it at a stable public URL, and re-hosting would cost
    * storage and bandwidth to end up with the same pixels.
    *

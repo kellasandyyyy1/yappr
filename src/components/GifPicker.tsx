@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { Search, X, Loader2, AlertCircle, ImageOff } from 'lucide-react';
 import { Modal, ModalHeader } from './Modal';
-import { searchGifs, GifSearchError, Gif } from '../lib/tenor';
+import { searchGifs, GifSearchError, Gif } from '../lib/giphy';
 import { cn } from '../lib/utils';
 
 interface GifPickerProps {
@@ -19,7 +19,7 @@ export function GifPicker({ onSelect, onClose, nested }: GifPickerProps) {
 
   /**
    * Debounced search. Runs once on open with an empty query, which the endpoint
-   * answers with Tenor's featured set — so the grid has content before the
+   * answers with GIPHY's trending set — so the grid has content before the
    * first keystroke rather than an empty panel.
    *
    * The AbortController is not an optimisation: without it a slow request for
@@ -65,7 +65,7 @@ export function GifPicker({ onSelect, onClose, nested }: GifPickerProps) {
             autoFocus
             value={query}
             onChange={(e) => setQuery(e.target.value)}
-            placeholder="Search Tenor…"
+            placeholder="Search GIPHY…"
             className="h-11 w-full rounded-full border border-line bg-surface-2 pl-10 pr-10 text-sm transition-colors placeholder:text-subtle focus:border-accent focus:outline-none"
           />
           <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 text-subtle" size={16} />
@@ -129,9 +129,10 @@ export function GifPicker({ onSelect, onClose, nested }: GifPickerProps) {
                   'transition-colors hover:border-accent focus-visible:border-accent focus-visible:outline-none'
                 )}
               >
-                {/* The PREVIEW renders here; gif.url — the full-size one — is
-                    what gets attached. Loading full-size GIFs into a grid of 24
-                    would be tens of megabytes. */}
+                {/* The PREVIEW rendition renders here (GIPHY fixed_height);
+                    gif.url — downsized, or original as a fallback — is what
+                    gets attached. A grid of 25 originals would be tens of
+                    megabytes. */}
                 <img
                   src={gif.previewUrl}
                   alt={gif.description}
@@ -147,9 +148,23 @@ export function GifPicker({ onSelect, onClose, nested }: GifPickerProps) {
         )}
       </div>
 
-      {/* Tenor's terms require attribution wherever their content is shown. */}
-      <div className="shrink-0 border-t border-line px-4 py-2 text-center sm:px-5">
-        <p className="text-[10px] text-subtle">GIFs via Tenor</p>
+      {/* MANDATORY, not decorative: GIPHY's terms require a visible
+          "Powered by GIPHY" mark wherever their content is displayed, which
+          is why this sits in the modal chrome rather than scrolling away with
+          the results. Rendered as a text mark — GIPHY's official PNG/SVG
+          assets are not publicly fetchable, so rather than approximate their
+          logo, drop the real asset from their brand page into /public and
+          swap the <span> below for an <img>. */}
+      <div className="flex shrink-0 items-center justify-center gap-1.5 border-t border-line px-4 py-2.5 sm:px-5">
+        <a
+          href="https://giphy.com/"
+          target="_blank"
+          rel="noopener noreferrer"
+          className="flex items-center gap-1.5 text-muted transition-colors hover:text-fg"
+        >
+          <span className="text-[11px] font-medium">Powered by</span>
+          <span className="text-[13px] font-extrabold tracking-tight text-fg">GIPHY</span>
+        </a>
       </div>
     </Modal>
   );
