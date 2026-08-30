@@ -154,10 +154,8 @@ console.log('\n3. Locket detail card');
     : ok('the cover is decoration, not a second viewer');
 }
 
-// Nothing in the gallery is cropped — that is what the cover is for.
-/w-full cursor-zoom-in object-contain/.test(mapView)
-  ? ok('gallery photos keep their aspect ratio', 'object-contain, no crop')
-  : bad('gallery photos keep their aspect ratio');
+// (The thumbnails used to be object-contain. They crop now — see the square
+// cell assertions below, and the lightbox check that keeps the original whole.)
 
 mapView.includes(`photos.length > 1 ? 'grid-cols-2' : 'grid-cols-1'`)
   ? ok('two columns from two photos up', 'a lone photo spans the card')
@@ -187,22 +185,72 @@ mapView.includes('onClick={() => setViewingImage(m.url!)}')
     : bad('video keeps its own full-width block');
 }
 
-// The song sits between the cover and the gallery: reachable without
-// scrolling past a column of photos, but not above the picture of the place.
+// The song is now part of the "You / added Xs ago" row, not a block of its
+// own. Source order is the check: it has to appear before the cover, which is
+// the first thing in the media group below.
 {
-  const coverIdx = mapView.indexOf('{cover && (');
+  const attribIdx = mapView.indexOf('added {formatTimeAgo(openPin.createdAt)}');
   const songIdx = mapView.indexOf('<ThemeSongCard');
-  const gridIdx = mapView.indexOf("'grid gap-2',");
-  const mapIdx = mapView.indexOf('The map, last and small');
-  coverIdx !== -1 && songIdx > coverIdx && songIdx < gridIdx && gridIdx < mapIdx
-    ? ok('the song sits under the cover, above the gallery')
-    : bad('the song sits under the cover, above the gallery',
-        `cover ${coverIdx}, song ${songIdx}, grid ${gridIdx}`);
+  const coverIdx = mapView.indexOf('{cover && (');
+  attribIdx !== -1 && songIdx > attribIdx && songIdx < coverIdx
+    ? ok('the song sits in the attribution row', 'above the cover, not between cover and gallery')
+    : bad('the song sits in the attribution row',
+        `attribution ${attribIdx}, song ${songIdx}, cover ${coverIdx}`);
 }
 
-/ThemeSongCard\s+className="max-w-none"/.test(mapView)
-  ? ok('the song chip spans the card', 'aligned with the banner')
-  : bad('the song chip spans the card', 'the 340px feed cap would misalign it');
+mapView.includes('variant="inline"')
+  ? ok('it renders as the inline control', 'play button + title, no card')
+  : bad('it renders as the inline control');
+
+// The full-width chip is what the inline control replaced. Leaving it behind
+// would put the same song on the card twice.
+!mapView.includes('className="max-w-none"')
+  ? ok('the full-width song block is gone')
+  : bad('the full-width song block is gone', 'the song renders twice');
+
+// A pin can hold more than one song: the composer appends without a cap.
+// Rendering only the first is the tempting simplification and it drops data.
+mapView.includes("resolved.filter((m) => m.type === 'song' && m.youtubeVideoId).map(")
+  ? ok('every attached song is rendered', 'not just the first')
+  : bad('every attached song is rendered');
+
+
+// Uniform cells. Ragged rows read as a broken layout rather than as photos.
+mapView.includes('aspect-square overflow-hidden')
+  ? ok('grid cells are a fixed square')
+  : bad('grid cells are a fixed square');
+
+mapView.includes('h-full w-full cursor-zoom-in object-cover')
+  ? ok('thumbnails fill their cell', 'object-cover')
+  : bad('thumbnails fill their cell');
+
+// Cropping the thumbnail is not the crop that was removed last round. That
+// one left no way to see the picture whole; this one is an index, and the
+// lightbox still opens the original.
+mapView.includes('onClick={() => setViewingImage(m.url!)}')
+  ? ok('the full image is still reachable uncropped', 'the square is only the thumbnail')
+  : bad('the full image is still reachable uncropped');
+
+// The cover was indistinguishable from a grid tile that had drifted up.
+mapView.includes('bg-gradient-to-t from-black/70')
+  ? ok('the cover has a header gradient', 'it no longer reads as a stray duplicate')
+  : bad('the cover has a header gradient');
+
+// The caption is a note in someone's voice, not another metadata line.
+mapView.includes('text-[15px] italic leading-relaxed')
+  ? ok('the caption is set apart', 'italic — this app has no serif to reach for')
+  : bad('the caption is set apart');
+
+// The last row was being cut by the modal edge with no sign it was scrollable.
+mapView.includes('space-y-4 pb-8')
+  ? ok('the scroll area has bottom padding')
+  : bad('the scroll area has bottom padding');
+
+// sticky, not absolute: the scroll container has no positioned ancestor, so
+// an absolute overlay would hang off the page instead of the modal.
+mapView.includes('pointer-events-none sticky bottom-0 -mt-8')
+  ? ok('a fade marks the bottom edge', 'sticky, and negative-margined so nothing is unreachable')
+  : bad('a fade marks the bottom edge');
 
 // --- 4. Overlap, measured ----------------------------------------------------
 console.log('\n4. How close is too close');

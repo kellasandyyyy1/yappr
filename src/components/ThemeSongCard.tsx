@@ -13,6 +13,17 @@ interface ThemeSongCardProps {
   /** Overrides the wrapper width. The default 340px cap suits a feed column;
    *  a card that stacks this under a full-width banner wants it to match. */
   className?: string;
+  /**
+   * "inline" strips the chrome down to a play button and a title, sized to
+   * sit in an existing row of text.
+   *
+   * It is a variant rather than a second component on purpose: playback,
+   * error handling and — the part that matters — the module-level registry
+   * that stops one song when another starts are all in here. A separate
+   * small player would have its own registry and two songs would play over
+   * each other again.
+   */
+  variant?: 'card' | 'inline';
 }
 
 /** YouTube's numeric onError codes. Without this mapping the console showed
@@ -49,7 +60,7 @@ const releasePlayback = (key: string) => {
   if (nowPlaying?.key === key) nowPlaying = null;
 };
 
-export function ThemeSongCard({ song, isOwnProfile, onPlay: onPlayProp, className }: ThemeSongCardProps) {
+export function ThemeSongCard({ song, isOwnProfile, onPlay: onPlayProp, className, variant = 'card' }: ThemeSongCardProps) {
   const [isPlaying, setIsPlaying] = useState(false);
   const [isPlayerReady, setIsPlayerReady] = useState(false);
   const [isMuted, setIsMuted] = useState(false);
@@ -307,7 +318,11 @@ export function ThemeSongCard({ song, isOwnProfile, onPlay: onPlayProp, classNam
       key={song.youtubeId}
       initial={{ opacity: 0, y: 10 }}
       animate={{ opacity: 1, y: 0 }}
-      className={cn('group relative w-full max-w-[340px]', className)}
+      className={cn(
+        'group relative',
+        variant === 'inline' ? 'w-auto max-w-[190px] shrink' : 'w-full max-w-[340px]',
+        className
+      )}
     >
       {/* The video surface: present, but never shown.
 
@@ -371,6 +386,57 @@ export function ThemeSongCard({ song, isOwnProfile, onPlay: onPlayProp, classNam
           }}
         />
       </div>
+
+      {variant === 'inline' ? (
+        /* Sized to a line of text: a 24px play button and a title, no fill,
+           no border, no transport. It shares a row with an avatar and a
+           timestamp, so anything with edges would read as a second card
+           dropped into that row. */
+        <button
+          type="button"
+          onClick={togglePlay}
+          title={loadError ?? song.title}
+          aria-label={
+            loadError ? `Retry ${song.title}`
+              : isPlaying ? `Pause ${song.title}`
+              : `Play ${song.title}`
+          }
+          className={cn(
+            'group/inline flex h-8 min-w-0 items-center gap-1.5 rounded-full pl-0.5 pr-2',
+            'transition-colors hover:bg-white/[0.05]'
+          )}
+        >
+          <span
+            className={cn(
+              'flex h-6 w-6 shrink-0 items-center justify-center rounded-full transition-colors',
+              loadError
+                ? 'bg-danger/15 text-danger'
+                : isPlaying
+                  ? 'bg-accent text-white'
+                  : 'bg-accent/15 text-accent group-hover/inline:bg-accent/25'
+            )}
+          >
+            {loadError ? (
+              <AlertCircle size={12} />
+            ) : !isPlayerReady ? (
+              <Loader2 size={12} className="animate-spin" />
+            ) : isPlaying ? (
+              <Pause size={12} fill="currentColor" />
+            ) : (
+              <Play size={12} fill="currentColor" className="ml-px" />
+            )}
+          </span>
+          <span
+            className={cn(
+              'truncate text-xs font-medium',
+              loadError ? 'text-danger/80' : isPlaying ? 'text-fg' : 'text-muted'
+            )}
+          >
+            {loadError ? 'Unavailable' : song.title}
+          </span>
+        </button>
+      ) : (
+      <>
 
       {/* A now-playing chip, not a feature card.
           Previously: 16px padding, a 56px cover, a bold all-caps "MUSIC
@@ -536,6 +602,8 @@ export function ThemeSongCard({ song, isOwnProfile, onPlay: onPlayProp, classNam
             />
           </div>
         </div>
+      )}
+      </>
       )}
     </motion.div>
   );

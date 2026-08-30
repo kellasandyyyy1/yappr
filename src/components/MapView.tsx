@@ -318,7 +318,7 @@ export function MapView({ user, onUserClick }: MapViewProps) {
               )}
             </ModalHeader>
 
-            <ModalBody className="scrollbar-thin space-y-4">
+            <ModalBody className="scrollbar-thin space-y-4 pb-8">
               {/* Locket header: the picture, then the name and where it is.
 
                   Rounded-SQUARE for a photo, CIRCLE for an avatar fallback —
@@ -371,12 +371,44 @@ export function MapView({ user, onUserClick }: MapViewProps) {
                   </p>
                   <p className="truncate text-xs text-muted">added {formatTimeAgo(openPin.createdAt)}</p>
                 </div>
+
+                {/* The song rides this row instead of owning a block under
+                    the cover. A pin has one mood, and it belongs with who
+                    set it down and when — not as a third full-width slab
+                    between the cover and the pictures.
+
+                    The composer appends songs without a cap, so more than
+                    one is possible. They wrap rather than being dropped:
+                    losing the second song to a tidier row would be data
+                    loss dressed up as design. */}
+                {resolved && resolved.some((m) => m.type === 'song' && m.youtubeVideoId) && (
+                  <div className="flex min-w-0 shrink flex-wrap justify-end gap-1">
+                    {resolved.filter((m) => m.type === 'song' && m.youtubeVideoId).map((m) => (
+                      <div key={m.id} className="min-w-0">
+                        <ThemeSongCard
+                          variant="inline"
+                          song={{
+                            youtubeId: m.youtubeVideoId!,
+                            title: 'Attached song',
+                            artist: '',
+                            coverUrl: `https://i.ytimg.com/vi/${m.youtubeVideoId}/mqdefault.jpg`,
+                            startTime: 0,
+                          }}
+                        />
+                      </div>
+                    ))}
+                  </div>
+                )}
               </div>
 
               {/* 3. The note, if there is one. Only shown when it is not
                   already doing duty as the title above. */}
               {openPin.caption && openPin.name && (
-                <p className="whitespace-pre-wrap text-[15px] leading-relaxed text-fg">
+                /* Italic, not a serif: this app has no serif anywhere, and
+                   introducing one for a single paragraph would read as a
+                   mistake rather than as a voice. Italic is already how the
+                   app writes quoted and spoken text elsewhere. */
+                <p className="whitespace-pre-wrap text-[15px] italic leading-relaxed text-fg/90">
                   {openPin.caption}
                 </p>
               )}
@@ -399,7 +431,6 @@ export function MapView({ user, onUserClick }: MapViewProps) {
                 (() => {
                   const photos = resolved.filter((m) => m.type === 'photo' && m.url);
                   const videos = resolved.filter((m) => m.type === 'video' && m.url);
-                  const songs = resolved.filter((m) => m.type === 'song' && m.youtubeVideoId);
                   const cover = photos[0]?.url;
 
                   return (
@@ -408,35 +439,31 @@ export function MapView({ user, onUserClick }: MapViewProps) {
                           grid image directly below and give the same picture
                           two hit targets a thumb-width apart. */}
                       {cover && (
-                        <div className="h-28 w-full overflow-hidden rounded-xl border border-line bg-black">
+                        <div className="relative h-28 w-full overflow-hidden rounded-xl border border-line bg-black">
                           <img src={cover} alt="" loading="lazy" className="h-full w-full object-cover" />
+                          {/* Without this the cover was indistinguishable from
+                              a first grid tile that had drifted upwards. The
+                              gradient is what tells the eye it is a header:
+                              headers are darkened at the bottom because text
+                              usually sits there, so the shape reads as chrome
+                              even with no text on it. */}
+                          <div
+                            aria-hidden="true"
+                            className="pointer-events-none absolute inset-x-0 bottom-0 h-2/3 bg-gradient-to-t from-black/70 via-black/20 to-transparent"
+                          />
                         </div>
                       )}
 
-                      {/* The song sits under the cover, above the pictures —
-                          it is the mood of the memory, so it should be reachable
-                          without scrolling past a column of photos. */}
-                      {songs.map((m) => (
-                        <div key={m.id}>
-                        <ThemeSongCard
-                          className="max-w-none"
-                          song={{
-                            youtubeId: m.youtubeVideoId!,
-                            title: 'Attached song',
-                            artist: '',
-                            coverUrl: `https://i.ytimg.com/vi/${m.youtubeVideoId}/mqdefault.jpg`,
-                            startTime: 0,
-                          }}
-                        />
-                        </div>
-                      ))}
+                      {/* The gallery: an index of what is attached, in uniform
+                          square cells.
 
-                      {/* The gallery. object-contain against a max height, so a
-                          panorama and a portrait both survive intact — the cell
-                          gives way to the picture rather than the other way
-                          round. Two columns from two photos up; a lone photo
-                          spans the card instead of sitting in a half-width
-                          column beside empty space. */}
+                          Mixed aspect ratios made this look broken — rows of
+                          different heights with gaps between them, which reads
+                          as a layout bug rather than as photographs. Squares
+                          crop, but only the THUMBNAIL: tapping opens the
+                          original whole. That is the difference from the 150px
+                          banner this replaced, where the crop was the only view
+                          of the picture there was. */}
                       {photos.length > 0 && (
                         <div
                           className={cn(
@@ -450,16 +477,13 @@ export function MapView({ user, onUserClick }: MapViewProps) {
                               type="button"
                               onClick={() => setViewingImage(m.url!)}
                               aria-label="Open photo full size"
-                              className="group/shot relative block overflow-hidden rounded-xl border border-line bg-elev/60"
+                              className="group/shot relative block aspect-square overflow-hidden rounded-xl border border-line bg-elev/60"
                             >
                               <img
                                 src={m.url}
                                 alt=""
                                 loading="lazy"
-                                className={cn(
-                                  'w-full cursor-zoom-in object-contain transition-transform duration-200 group-hover/shot:scale-[1.02]',
-                                  photos.length > 1 ? 'max-h-[220px]' : 'max-h-[340px]'
-                                )}
+                                className="h-full w-full cursor-zoom-in object-cover transition-transform duration-200 group-hover/shot:scale-[1.02]"
                               />
                               <span className="pointer-events-none absolute bottom-1.5 right-1.5 rounded-md bg-black/65 px-1.5 py-0.5 text-[10px] font-medium text-white opacity-0 transition-opacity group-hover/shot:opacity-100">
                                 Tap to expand
@@ -505,6 +529,20 @@ export function MapView({ user, onUserClick }: MapViewProps) {
                   {openPin.latitude.toFixed(5)}, {openPin.longitude.toFixed(5)}
                 </p>
               </div>
+
+              {/* A fade pinned to the bottom edge of the scroll area, so a
+                  half-visible row of photos reads as "keep scrolling" rather
+                  than as an image that failed to load.
+
+                  sticky, not absolute: the scroll container has no positioned
+                  ancestor to hang an overlay from, and a sticky last child
+                  sits against the visible bottom edge for free. The negative
+                  margin pulls it over the content instead of adding to the
+                  scroll height, which would leave a strip nothing can reach. */}
+              <div
+                aria-hidden="true"
+                className="pointer-events-none sticky bottom-0 -mt-8 h-8 bg-gradient-to-t from-surface to-transparent"
+              />
             </ModalBody>
           </Modal>
         )}
