@@ -50,14 +50,24 @@ export function Navbar({
               onClick={() => onViewChange(item.id)}
               aria-current={isActive ? 'page' : undefined}
               aria-label={item.label}
+              // Icon only. Six labels at 10px in a ~49px cell was the crowding:
+              // "Notifications" cannot be read at that width, so it was noise
+              // that also squeezed the icon. The name is not lost — aria-label
+              // below carries it, which is what a screen reader was already
+              // reading anyway.
+              //
+              // flex-1 is the even distribution: each button takes an equal
+              // share of whatever the compose button leaves. .tap supplies the
+              // flex context and a 44x44 minimum, so the target stays a full
+              // thumb even though the icon is 24.
               className={cn(
-                'tap relative flex-1 flex-col gap-1 rounded-lg py-2',
+                'tap relative flex-1 rounded-lg',
                 'transition-colors duration-100',
                 isActive ? 'text-accent' : 'text-muted active:text-fg'
               )}
             >
               <span className="relative flex items-center justify-center">
-                <Icon size={22} strokeWidth={isActive ? 2.4 : 2} />
+                <Icon size={24} strokeWidth={isActive ? 2.4 : 2} />
                 {count > 0 && (
                   <span
                     className="absolute -right-2 -top-1 flex h-[16px] min-w-[16px] items-center justify-center rounded-full bg-accent px-1 text-[9px] font-bold leading-none text-white"
@@ -66,7 +76,6 @@ export function Navbar({
                   </span>
                 )}
               </span>
-              <span className="text-[10px] font-semibold leading-none">{item.label}</span>
             </button>
           );
         })}
