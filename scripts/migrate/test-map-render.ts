@@ -65,6 +65,33 @@ console.log('1. Leaflet');
     : bad('the filter targets the tile pane only');
 }
 
+// The tile host has to be allowed by BOTH policies, or the map renders as an
+// empty black rectangle with working zoom controls — which is what shipped.
+{
+  const vercel = fs.readFileSync('vercel.json', 'utf8');
+  const server = fs.readFileSync('server.ts', 'utf8');
+  vercel.includes('https://tile.openstreetmap.org')
+    ? ok('vercel.json img-src allows the tile host')
+    : bad('vercel.json img-src allows the tile host', 'tiles will be blocked in production');
+  server.includes('https://tile.openstreetmap.org')
+    ? ok('server.ts img-src allows the tile host')
+    : bad('server.ts img-src allows the tile host', 'tiles will be blocked in dev');
+}
+
+// A blocked tile host produces no visible error of its own. Leaflet fires
+// tileerror; without handling it the failure is a silent black box.
+/tileerror:/.test(pinMap)
+  ? ok('tile failures are detected', 'Leaflet tileerror is handled')
+  : bad('tile failures are detected', 'a blocked host would fail silently');
+
+/tilesFailed &&/.test(pinMap)
+  ? ok('and surfaced to the reader')
+  : bad('and surfaced to the reader');
+
+/failed >= 3/.test(pinMap)
+  ? ok('one missing edge tile does not cry wolf', 'needs 3 failures and 0 loads')
+  : bad('one missing edge tile does not cry wolf');
+
 // --- 2. Every caller gives it a height ---------------------------------------
 console.log('\n2. Callers');
 const callers = ['src/components/MapView.tsx', 'src/components/CreatePinModal.tsx'];

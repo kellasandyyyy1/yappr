@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { MapContainer, TileLayer, Marker, useMapEvents, useMap } from 'react-leaflet';
 import L from 'leaflet';
 import 'leaflet/dist/leaflet.css';
@@ -206,6 +206,13 @@ export function PinMap({
   // provisional rather than as something already saved.
   const draftIcon = useMemo(() => photoBubble({ color: '#f87171', initial: '+' }), []);
 
+  // Tiles either arrive or they do not, and when they do not the map is an
+  // empty black rectangle that looks identical to "no pins here". Leaflet
+  // fires tileerror for a failed tile image — including one blocked by CSP,
+  // which is the usual cause and produces no other visible signal.
+  const [tilesFailed, setTilesFailed] = useState(false);
+  const tileStats = useRef({ loaded: 0, failed: 0 });
+
   return (
     <div className={cn('map-dark relative overflow-hidden rounded-2xl border border-line', className)}>
       <MapContainer
@@ -245,6 +252,26 @@ export function PinMap({
           url="https://tile.openstreetmap.org/{z}/{x}/{y}.png"
           attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
           maxZoom={19}
+          eventHandlers={{
+            tileload: () => {
+              tileStats.current.loaded += 1;
+              setTilesFailed(false);
+            },
+            tileerror: () => {
+              tileStats.current.failed += 1;
+              // Three failures with nothing loaded, not one: a single tile
+              // missing at the edge of coverage is ordinary, while every
+              // tile failing is a blocked host.
+              if (tileStats.current.loaded === 0 && tileStats.current.failed >= 3) {
+                setTilesFailed(true);
+                console.error('[PinMap] map tiles are not loading', {
+                  host: 'tile.openstreetmap.org',
+                  failed: tileStats.current.failed,
+                  hint: 'Almost always CSP: img-src must allow https://tile.openstreetmap.org. Check the Content-Security-Policy header actually being served — a dev server started before the header changed will still send the old one.',
+                });
+              }
+            },
+          }}
         />
 
         <Recenter center={center ?? null} zoom={zoom} />
@@ -266,6 +293,20 @@ export function PinMap({
           <Marker position={[draft.latitude, draft.longitude]} icon={draftIcon} />
         )}
       </MapContainer>
+
+      {tilesFailed && (
+        <div
+          style={{ zIndex: 500 }}
+          className="pointer-events-none absolute inset-0 flex items-center justify-center bg-bg/80 px-6 text-center"
+        >
+          <div>
+            <p className="text-sm font-semibold text-fg">Map tiles didn't load</p>
+            <p className="mx-auto mt-1 max-w-[260px] text-xs leading-relaxed text-muted">
+              The map is working but its imagery is being blocked. The console has the detail.
+            </p>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
