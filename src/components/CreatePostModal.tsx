@@ -668,30 +668,33 @@ export function CreatePostModal({ user, onClose, onSuccess }: CreatePostModalPro
             </AnimatePresence>
         </ModalBody>
 
-        <ModalFooter className="space-y-3">
-          {/* Visibility is a labelled control, not a bare icon — the current
-              audience is spelled out in words at all times. */}
-          <div className="relative">
+        <ModalFooter>
+          {/* One row: visibility, then the attachment cluster, then Post.
+              Three stacked sections became one, so the two dividers between
+              them are gone with them. */}
+          <div className="flex items-center gap-1">
+          {/* Visibility, compacted.
+
+              This was a full-width two-line bar on its own row — the widest
+              element in the footer, for a control most posts never change.
+              It is now an icon and a chevron in the attachment row. The icon
+              IS the state: globe / people / lock differ at a glance, and the
+              words are still there in the menu and in the tooltip. */}
+          <div className="relative shrink-0">
             <button
               type="button"
               onClick={() => setShowVisibilityMenu((v) => !v)}
               aria-haspopup="listbox"
               aria-expanded={showVisibilityMenu}
-              className="flex w-full items-center gap-2 rounded-xl border border-line bg-surface-2 px-3 py-2.5 text-left transition-colors duration-100 hover:bg-surface-3"
+              aria-label={`Visible to: ${activeVisibility.label}`}
+              title={`Visible to: ${activeVisibility.label}`}
+              className="flex h-9 items-center gap-0.5 rounded-lg pl-2 pr-1 text-muted transition-colors duration-100 hover:bg-surface-2 hover:text-fg"
             >
-              <VisibilityIcon size={16} className="shrink-0 text-accent" />
-              <span className="min-w-0 flex-1">
-                <span className="block text-sm font-semibold text-fg">
-                  Visible to: {activeVisibility.label}
-                </span>
-                <span className="block truncate text-xs text-muted">
-                  {activeVisibility.description}
-                </span>
-              </span>
+              <VisibilityIcon size={17} className="shrink-0 text-accent" />
               <ChevronDown
-                size={16}
+                size={13}
                 className={cn(
-                  'shrink-0 text-muted transition-transform duration-150',
+                  'shrink-0 transition-transform duration-150',
                   showVisibilityMenu && 'rotate-180'
                 )}
               />
@@ -706,7 +709,7 @@ export function CreatePostModal({ user, onClose, onSuccess }: CreatePostModalPro
                   exit={{ opacity: 0, y: 6 }}
                   transition={{ duration: 0.12 }}
                   style={{ zIndex: 'var(--z-popover)' }}
-                  className="absolute bottom-full left-0 right-0 mb-2 overflow-hidden rounded-xl border border-line bg-surface-2 shadow-xl"
+                  className="absolute bottom-full left-0 mb-2 w-60 overflow-hidden rounded-xl border border-line bg-surface-2 shadow-xl"
                 >
                   {VISIBILITY_OPTIONS.map((option) => {
                     const OptionIcon = option.icon;
@@ -743,11 +746,6 @@ export function CreatePostModal({ user, onClose, onSuccess }: CreatePostModalPro
             </AnimatePresence>
           </div>
 
-          {/* flex-wrap, not a single line: five attachment buttons plus Post
-              exceed the 464px of usable width in this modal, which is what
-              pushed Post past the right edge. Where it fits, one row; where
-              it does not, Post takes its own line and stays right-aligned. */}
-          <div className="flex flex-wrap items-center gap-2">
             <input
               type="file"
               ref={fileInputRef}
@@ -757,17 +755,27 @@ export function CreatePostModal({ user, onClose, onSuccess }: CreatePostModalPro
               className="hidden"
             />
             {/* Each attachment control carries a text label, not just a glyph. */}
+            {/* Icon-only, with the label moved to the tooltip and the
+                accessible name. Five labelled buttons could not fit a 375px
+                phone; five icons can. */}
             <button
               type="button"
               disabled={isRecording || !!pendingVoice || selectedImages.length >= 10}
               onClick={() => fileInputRef.current?.click()}
-              title="Attach photos"
-              className="flex h-11 items-center gap-1.5 rounded-xl border border-line bg-surface-2 px-2.5 text-sm font-medium text-muted transition-colors duration-100 hover:text-fg disabled:cursor-not-allowed disabled:opacity-40"
+              title="Photo"
+              aria-label="Attach photos"
+              className={cn(
+                'relative flex h-9 w-9 shrink-0 items-center justify-center rounded-lg transition-colors duration-100 disabled:cursor-not-allowed disabled:opacity-40',
+                selectedImages.length > 0 ? 'bg-accent/15 text-accent' : 'text-muted hover:bg-surface-2 hover:text-fg'
+              )}
             >
-              <ImageIcon size={18} />
-              <span className="hidden sm:inline">Photo</span>
+              <ImageIcon size={19} />
+              {/* The count badge. `relative` on the button above is what this
+                  anchors to — without it the badge positions against whatever
+                  ancestor happens to be positioned, which here would have been
+                  the visibility dropdown's wrapper. */}
               {selectedImages.length > 0 && (
-                <span className="flex h-5 min-w-5 items-center justify-center rounded-full bg-accent px-1 text-xs font-bold text-white">
+                <span className="absolute -right-1 -top-1 flex h-4 min-w-4 items-center justify-center rounded-full bg-accent px-1 text-[10px] font-bold leading-none text-white">
                   {selectedImages.length}
                 </span>
               )}
@@ -784,69 +792,61 @@ export function CreatePostModal({ user, onClose, onSuccess }: CreatePostModalPro
               type="button"
               onClick={() => videoInputRef.current?.click()}
               disabled={isRecording || !!pendingVoice || preparingVideo}
-              title="Attach a video"
+              title="Video"
+              aria-label="Attach a video"
               className={cn(
-                'flex h-11 items-center gap-1.5 rounded-xl border px-2.5 text-sm font-medium transition-colors duration-100 disabled:cursor-not-allowed disabled:opacity-40',
-                selectedVideo
-                  ? 'border-accent/40 bg-accent/10 text-accent'
-                  : 'border-line bg-surface-2 text-muted hover:text-fg'
+                'flex h-9 w-9 shrink-0 items-center justify-center rounded-lg transition-colors duration-100 disabled:cursor-not-allowed disabled:opacity-40',
+                selectedVideo ? 'bg-accent/15 text-accent' : 'text-muted hover:bg-surface-2 hover:text-fg'
               )}
             >
-              {preparingVideo ? <Loader2 size={18} className="animate-spin" /> : <VideoIcon size={18} />}
-              <span className="hidden sm:inline">Video</span>
+              {preparingVideo ? <Loader2 size={19} className="animate-spin" /> : <VideoIcon size={19} />}
             </button>
 
             <button
               type="button"
               onClick={() => setShowGifPicker(true)}
               disabled={isRecording || !!pendingVoice}
-              title="Attach a GIF"
+              title="GIF"
+              aria-label="Attach a GIF"
               className={cn(
-                'flex h-11 items-center gap-1.5 rounded-xl border px-2.5 text-sm font-medium transition-colors duration-100 disabled:cursor-not-allowed disabled:opacity-40',
-                selectedGif
-                  ? 'border-accent/40 bg-accent/10 text-accent'
-                  : 'border-line bg-surface-2 text-muted hover:text-fg'
+                'flex h-9 w-9 shrink-0 items-center justify-center rounded-lg transition-colors duration-100 disabled:cursor-not-allowed disabled:opacity-40',
+                selectedGif ? 'bg-accent/15 text-accent' : 'text-muted hover:bg-surface-2 hover:text-fg'
               )}
             >
-              <Film size={18} />
-              <span className="hidden sm:inline">GIF</span>
+              <Film size={19} />
             </button>
 
             <button
               type="button"
               onClick={startRecording}
               disabled={isRecording || !!pendingVoice || selectedImages.length > 0}
-              title="Record a voice note"
+              title="Voice note"
+              aria-label="Record a voice note"
               className={cn(
-                'flex h-11 items-center gap-1.5 rounded-xl border px-2.5 text-sm font-medium transition-colors duration-100 disabled:cursor-not-allowed disabled:opacity-40',
-                isRecording
-                  ? 'border-danger bg-danger text-black'
-                  : 'border-line bg-surface-2 text-muted hover:text-fg'
+                'flex h-9 w-9 shrink-0 items-center justify-center rounded-lg transition-colors duration-100 disabled:cursor-not-allowed disabled:opacity-40',
+                isRecording ? 'bg-danger text-white' : 'text-muted hover:bg-surface-2 hover:text-fg'
               )}
             >
-              <Mic size={18} />
-              <span className="hidden sm:inline">Voice</span>
+              <Mic size={19} />
             </button>
 
             <button
               type="button"
               onClick={() => setShowMusicSearch(true)}
               disabled={isRecording || !!pendingVoice}
-              title="Attach a song"
+              title="Song"
+              aria-label="Attach a song"
               className={cn(
-                'flex h-11 items-center gap-1.5 rounded-xl border px-2.5 text-sm font-medium transition-colors duration-100 disabled:cursor-not-allowed disabled:opacity-40',
-                selectedSong
-                  ? 'border-accent bg-accent text-white'
-                  : 'border-line bg-surface-2 text-muted hover:text-fg'
+                'flex h-9 w-9 shrink-0 items-center justify-center rounded-lg transition-colors duration-100 disabled:cursor-not-allowed disabled:opacity-40',
+                selectedSong ? 'bg-accent/15 text-accent' : 'text-muted hover:bg-surface-2 hover:text-fg'
               )}
             >
-              <Music size={18} />
-              <span className="hidden sm:inline">Song</span>
+              <Music size={19} />
             </button>
 
             <button
               disabled={isPosting || justPosted || !canSubmit}
-              className="btn-primary ml-auto flex h-11 min-w-[110px] shrink-0 items-center justify-center gap-2 px-5 text-sm"
+              className="btn-primary ml-auto flex h-9 shrink-0 items-center justify-center gap-1.5 px-4 text-sm"
             >
               {justPosted ? (
                 <>
