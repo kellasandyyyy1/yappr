@@ -1,18 +1,16 @@
 /**
- * The chat send button is always visible, on a phone.
+ * The chat send button always has a place to be.
  *
  *   npx tsx scripts/migrate/test-chat-composer.ts
  *
- * Send went off-screen at mobile widths and it was found by using the app, not
- * by any check. This measures the row instead, from the component's own class
- * names, so adding a sixth attachment button or widening the pill moves these
- * numbers rather than silently pushing the primary action out of reach again.
+ * Send went off screen at mobile widths, and it was found by using the app
+ * rather than by any check. The bar is now [+] [message] [mic|send], with the
+ * right slot reserved and single-occupancy, so the primary action cannot be
+ * displaced by attachment controls no matter how many are added.
  *
- * The failure had two causes and both are asserted here:
- *   1. the text input was flex-1 with no min-w-0, so the pill could not shrink
- *      below the input's intrinsic width (~180px) and the row overflowed;
- *   2. four 40px attachment buttons do not leave a usable text field at 375px
- *      even once the pill can shrink.
+ * This measures the row from the component's own class names, so widening a
+ * control or adding a sixth attachment type moves these numbers instead of
+ * silently pushing the primary action out of reach again.
  */
 
 import fs from 'node:fs';
@@ -22,130 +20,139 @@ const ok = (l: string, d = '') => console.log(`  PASS  ${l}${d ? ` — ${d}` : '
 const bad = (l: string, d = '') => { console.log(`  FAIL  ${l}${d ? ` — ${d}` : ''}`); failures++; };
 
 const src = fs.readFileSync('src/components/ChatView.tsx', 'utf8').replace(/\r\n/g, '\n');
-
 const sp = (n: number) => n * 4;
 
-// The composer row, isolated.
-const rowStart = src.indexOf('<div className="relative flex items-center gap-3">');
-// Bounded by the marker that follows the composer, not by a character count:
-// a fixed window silently truncated the row and made two of the four menu
-// items invisible to this test.
+// Bounded by the marker that follows the composer, not by a character count —
+// a fixed window once truncated this and hid half the menu from the test.
+const rowStart = src.indexOf('<div className="relative flex items-center gap-2">');
 const rowEnd = src.indexOf('{/* Action Confirmation */}', rowStart);
 const row = rowStart === -1 ? '' : src.slice(rowStart, rowEnd === -1 ? undefined : rowEnd);
 
-console.log('Chat composer — send button reachability\n');
+console.log('Chat composer — [+] [message] [mic|send]\n');
 
-// --- 1. The structural guarantees --------------------------------------------
-console.log('1. Structure');
+// --- 1. The reserved slot -----------------------------------------------------
+console.log('1. The right slot is reserved and single-occupancy');
 
-rowStart !== -1
-  ? ok('composer row found')
-  : bad('composer row found', 'the expected wrapper class is gone');
+rowStart !== -1 ? ok('composer row found') : bad('composer row found');
+
+// The three states must be branches of one conditional, so exactly one can
+// render. Two sibling buttons would let a mic and a send appear together.
+const slot = row.match(/\{isRecording \? \([\s\S]*?\) : hasMessageText \? \([\s\S]*?\) : \([\s\S]*?\)\}/);
+slot
+  ? ok('one slot, three exclusive states', 'recording → stop, text → send, else → mic')
+  : bad('one slot, three exclusive states', 'the states are not branches of a single conditional');
+
+const slotText = slot?.[0] ?? '';
+for (const [label, needle] of [
+  ['stop while recording', 'aria-label="Stop recording"'],
+  ['send once there is text', 'aria-label="Send message"'],
+  ['microphone when empty', 'aria-label="Record a voice message"'],
+] as const) {
+  slotText.includes(needle) ? ok(label) : bad(label, `${needle} missing`);
+}
+
+// Exactly one of each, and never a second copy elsewhere in the bar.
+for (const [label, needle] of [
+  ['only one send control', 'aria-label="Send message"'],
+  ['only one microphone', 'aria-label="Record a voice message"'],
+  ['only one stop control', 'aria-label="Stop recording"'],
+] as const) {
+  const n = row.split(needle).length - 1;
+  n === 1 ? ok(label) : bad(label, `${n} found`);
+}
+
+// A second stop in the recording card would put two primary actions on screen.
+(src.match(/onClick=\{stopRecording\}/g) || []).length === 1
+  ? ok('the recording card no longer carries its own stop')
+  : bad('the recording card no longer carries its own stop', 'two stop buttons can show at once');
+
+/hasMessageText = newMessage\.trim\(\)\.length > 0/.test(src)
+  ? ok('the morph is driven by the trimmed input')
+  : bad('the morph is driven by the trimmed input');
+
+// --- 2. Structure that makes overflow impossible -----------------------------
+console.log('\n2. Structure');
 
 /className="min-w-0 flex-1 bg-transparent/.test(row)
-  ? ok('text input has min-w-0', "without it a flex item's min-width is its intrinsic size")
+  ? ok('text input has min-w-0', "a flex item's min-width otherwise resolves to its intrinsic size")
   : bad('text input has min-w-0', 'the pill cannot shrink and the row will overflow');
 
-/flex min-w-0 flex-1 items-center gap-2 rounded-3xl/.test(row)
-  ? ok('the input pill itself can shrink', 'min-w-0 flex-1')
-  : bad('the input pill itself can shrink');
+/flex min-w-0 flex-1 items-center rounded-3xl/.test(row)
+  ? ok('the pill is the only flexible element')
+  : bad('the pill is the only flexible element');
 
-// Send has to be outside the shrinkable pill AND non-shrinking.
-const sendIdx = row.indexOf('aria-label="Send message"');
-const pillEnd = row.indexOf('</div>\n\n            {/* shrink-0 and outside the pill');
-sendIdx > pillEnd && pillEnd !== -1
-  ? ok('Send sits outside the shrinkable pill')
-  : bad('Send sits outside the shrinkable pill', 'it can be squeezed with the input');
+const shrinkZero = (row.match(/h-11 w-11 shrink-0/g) || []).length;
+shrinkZero >= 4
+  ? ok('[+] and every slot state are shrink-0', `${shrinkZero} fixed 44px controls`)
+  : bad('[+] and every slot state are shrink-0', `only ${shrinkZero}`);
 
-/btn-primary flex h-12 w-12 shrink-0/.test(row)
-  ? ok('Send is shrink-0', '48px, fixed')
-  : bad('Send is shrink-0');
+// [+] must come before the pill; the slot after it.
+const plusIdx = row.indexOf('aria-label="Add an attachment"');
+const pillIdx = row.indexOf('flex min-w-0 flex-1 items-center rounded-3xl');
+const slotIdx = row.indexOf('{isRecording ? (');
+plusIdx !== -1 && plusIdx < pillIdx && pillIdx < slotIdx
+  ? ok('order is [+] then input then slot')
+  : bad('order is [+] then input then slot');
 
-// --- 2. Mobile collapses the icon row ----------------------------------------
-console.log('\n2. Mobile collapse');
-
-/aria-label="Add an attachment"[\s\S]{0,400}sm:hidden/.test(row)
-  ? ok('a single "+" button below sm')
-  : bad('a single "+" button below sm');
-
-/className="hidden items-center gap-1 sm:flex"/.test(row)
-  ? ok('the four icons are desktop-only', 'hidden ... sm:flex')
-  : bad('the four icons are desktop-only', 'they still render on mobile');
+// --- 3. The attachment menu ---------------------------------------------------
+console.log('\n3. Attachment menu');
 
 const menuActions = [...row.matchAll(/setShowAttachMenu\(false\); ([a-zA-Z.?()]+)/g)].map((m) => m[1]);
-menuActions.length === 4
-  ? ok('the menu offers all four attachment types', `${menuActions.length} actions`)
-  : bad('the menu offers all four attachment types', `found ${menuActions.length}`);
+menuActions.length === 3
+  ? ok('menu holds Photo, Video and GIF', '3 actions')
+  : bad('menu holds Photo, Video and GIF', `found ${menuActions.length}`);
 
-// Both file inputs must be outside the conditional, or the menu's refs are null.
-const conditional = row.indexOf('{!isRecording && !pendingAttachment && (');
+!/setShowAttachMenu\(false\); startRecording/.test(row)
+  ? ok('Voice is NOT in the menu', 'it is the microphone in the right slot')
+  : bad('Voice is NOT in the menu', 'it is duplicated');
+
+const conditional = row.indexOf('{isRecording ? (');
 const photoInput = row.indexOf('ref={fileInputRef}');
 const videoInput = row.indexOf('ref={videoInputRef}');
-photoInput < conditional && videoInput < conditional && photoInput !== -1 && videoInput !== -1
+photoInput !== -1 && videoInput !== -1 && photoInput < conditional && videoInput < conditional
   ? ok('both file inputs stay mounted', 'the menu triggers their refs')
-  : bad('both file inputs stay mounted', 'a ref inside the conditional is null when the menu fires');
+  : bad('both file inputs stay mounted');
 
-// --- 3. Widths ----------------------------------------------------------------
-console.log('\n3. Widths');
+/hidden items-center gap-1 sm:flex|hidden sm:flex/.test(row)
+  ? bad('one layout at every width', 'a breakpoint-specific icon row is still here')
+  : ok('one layout at every width', 'no sm: divergence in the bar');
 
-// The chat detail pane: fixed inset-0 with p-4 on mobile, sm:p-6 and a sidebar
-// offset from sm up.
+// --- 4. Widths ----------------------------------------------------------------
+console.log('\n4. Widths');
+
 const shell = src.match(/className="fixed inset-0 flex flex-col bg-bg p-(\d+) pb-\d+ sm:left-(\d+) sm:p-(\d+)/);
 if (!shell) bad('chat shell padding is readable');
 else ok('chat shell padding', `p-${shell[1]} mobile, sm:p-${shell[3]} with sm:left-${shell[2]}`);
 
 const padMobile = sp(Number(shell?.[1] ?? 4));
-const SEND = 48;
-const OUTER_GAP = sp(3);
-const PILL_PAD = sp(5) + sp(2); // pl-5 + p-2 right
-const PILL_GAP = sp(2);
-const ICON = 40;
-const ICON_GAP = sp(1);
+const CTRL = 44;          // h-11 w-11, and a real 44px touch target
+const GAP = sp(2);        // gap-2
+const PILL_PAD = sp(4) * 2; // px-4
 
-/**
- * The smallest the text field is allowed to get before the composer stops
- * being usable. Not a browser constant — a judgement, stated so it can be
- * argued with rather than discovered.
- */
+/** Below this the field stops being usable. A judgement, stated so it can be
+ *  argued with rather than discovered later. */
 const MIN_FIELD = 120;
 
-const layouts = {
-  mobile: { attach: ICON, label: 'one "+" button' },
-  desktop: { attach: ICON * 4 + ICON_GAP * 3, label: 'four icons' },
-};
-
-const CASES: Array<[string, number, number, keyof typeof layouts]> = [
-  ['iPhone SE / 12 mini  375px', 375, padMobile, 'mobile'],
-  ['iPhone 12/13/14      390px', 390, padMobile, 'mobile'],
-  ['iPhone Plus/Max      414px', 414, padMobile, 'mobile'],
-  // From sm up the pane is inset by the 80px sidebar and padded p-6.
-  ['tablet               768px', 768 - 80, sp(6), 'desktop'],
+const CASES: Array<[string, number, number]> = [
+  ['iPhone SE / 12 mini  375px', 375, padMobile],
+  ['iPhone 12/13/14      390px', 390, padMobile],
+  ['iPhone Plus/Max      414px', 414, padMobile],
+  ['tablet               768px', 768 - 80, sp(6)],
+  ['desktop             1280px', 1280 - 256, sp(6)],
 ];
 
-for (const [label, viewport, pad, which] of CASES) {
+for (const [label, viewport, pad] of CASES) {
   const usable = viewport - pad * 2;
-  const pill = usable - SEND - OUTER_GAP;
-  const field = pill - PILL_PAD - PILL_GAP - layouts[which].attach;
-
-  const sendFits = pill > 0;
-  const fieldOk = field >= MIN_FIELD;
-
-  sendFits && fieldOk
-    ? ok(label, `${layouts[which].label} · pill ${pill}px · field ${field}px · Send ${SEND}px always visible`)
-    : bad(label, sendFits
-        ? `field only ${field}px (want >= ${MIN_FIELD})`
-        : `no room for the pill — Send would be pushed off`);
+  // [+] gap pill gap slot
+  const pill = usable - CTRL * 2 - GAP * 2;
+  const field = pill - PILL_PAD;
+  pill > 0 && field >= MIN_FIELD
+    ? ok(label, `[+] 44 · field ${field}px · slot 44 reserved · ${usable - CTRL * 2 - GAP * 2 - field - PILL_PAD}px unused`)
+    : bad(label, `field ${field}px (want >= ${MIN_FIELD})`);
 }
 
-// The old layout, for the record: four icons on a phone.
-{
-  const usable = 375 - padMobile * 2;
-  const field = usable - SEND - OUTER_GAP - PILL_PAD - PILL_GAP - layouts.desktop.attach;
-  console.log(`\n     for comparison, four icons at 375px would leave a ${field}px text field`);
-  field < MIN_FIELD
-    ? ok('collapsing on mobile is necessary', `${field}px < ${MIN_FIELD}px minimum`)
-    : bad('collapsing on mobile is necessary', 'four icons would have fitted after all');
-}
+console.log('\n     the slot is a fixed 44px at every width above — it is not');
+console.log('     part of the flexible area, so nothing can displace it.');
 
 console.log('\n' + '─'.repeat(60));
 console.log(failures === 0 ? 'CHAT COMPOSER OK' : `${failures} failure(s).`);
