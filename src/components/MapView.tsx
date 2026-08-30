@@ -9,7 +9,7 @@ import { Modal, ModalHeader, ModalBody, ConfirmDialog } from './Modal';
 import { Avatar } from './Avatar';
 import { useToast } from './ToastContext';
 import { pins as pinsApi, Pin, PinMedia } from '../lib/pins';
-import { formatTimeAgo } from '../lib/utils';
+import { formatTimeAgo, describeError } from '../lib/utils';
 import { AnimatePresence } from 'motion/react';
 import type { User } from '../types';
 
@@ -46,7 +46,7 @@ export function MapView({ user, onUserClick }: MapViewProps) {
       // query failed is the same conflation that made a broken comment query
       // look like missing data.
       console.error('Error loading pins:', err);
-      setError(err instanceof Error ? err.message : String(err));
+      setError(describeError(err));
       setPins([]);
     }
   }, []);

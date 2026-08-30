@@ -40,3 +40,44 @@ export function formatTimeAgo(date: any) {
 // same, which is what surfaced as unreadable error text in the UI.
 //
 // Call sites now log the error and nothing else.
+
+/**
+ * Turns anything thrown into something a person can read.
+ *
+ * `err instanceof Error ? err.message : String(err)` looks thorough and is
+ * not: a Supabase PostgrestError is a plain object, not an Error, so it takes
+ * the String() branch and renders as the literal text "[object Object]" — the
+ * error is on screen and says nothing. Every error surface in this app that
+ * can show a Supabase failure has to handle that shape.
+ *
+ * Includes the code when there is one, because "PGRST205" is the difference
+ * between a missing table and a policy denial.
+ */
+export function describeError(err: unknown): string {
+  if (typeof err === 'string') return err;
+  if (err instanceof Error && err.message) return err.message;
+
+  if (err && typeof err === 'object') {
+    const anyErr = err as Record<string, unknown>;
+    const message =
+      (typeof anyErr.message === 'string' && anyErr.message) ||
+      (typeof anyErr.error_description === 'string' && anyErr.error_description) ||
+      (typeof anyErr.error === 'string' && anyErr.error) ||
+      '';
+    const code = typeof anyErr.code === 'string' ? anyErr.code : '';
+    const hint = typeof anyErr.hint === 'string' ? anyErr.hint : '';
+
+    if (message) return [code && `${code}:`, message, hint && `(${hint})`].filter(Boolean).join(' ');
+
+    // No recognisable message field. JSON beats "[object Object]" — it at
+    // least carries whatever the failure did come with.
+    try {
+      const json = JSON.stringify(err);
+      if (json && json !== '{}') return json;
+    } catch {
+      /* circular */
+    }
+  }
+
+  return 'Something failed, and it gave no reason.';
+}

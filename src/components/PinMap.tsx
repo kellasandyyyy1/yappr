@@ -111,7 +111,21 @@ export function PinMap({
         center={center ?? FALLBACK_CENTER}
         zoom={zoom}
         scrollWheelZoom
-        className="h-full w-full"
+        // absolute inset-0, NOT h-full.
+        //
+        // Callers size this wrapper with min-h-[…] plus flex-1, which leaves
+        // its computed `height` as `auto`. A percentage height — which is what
+        // h-full is — resolves against `auto` as `auto`, so the map div
+        // collapsed to its content height, which for an uninitialised Leaflet
+        // container is zero. The bordered box was the right size and the map
+        // inside it was 0px tall: Leaflet's most common blank-map cause.
+        //
+        // An absolutely positioned box sizes against the padding box of its
+        // positioned ancestor, whose USED height is real (320px from the
+        // min-height). That sidesteps percentage resolution entirely and works
+        // whether the caller sizes the wrapper with a height, a min-height or
+        // a flex basis.
+        className="absolute inset-0"
         // Leaflet paints its own light background behind the tiles, which
         // flashes white while they load.
         style={{ background: '#0d0d12' }}

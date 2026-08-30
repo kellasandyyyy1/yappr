@@ -12,7 +12,7 @@ import { uploadFile, UploadError } from '../lib/supabase';
 import { User, Comment, Post } from '../types';
 import { motion, AnimatePresence } from 'motion/react';
 import { X, Send, MessageSquare, Mic, Image as ImageIcon, Loader2, Play, Pause, Square, Volume2, Trash2, AtSign, Heart, Grid, CornerDownRight } from 'lucide-react';
-import { cn, formatTimeAgo } from '../lib/utils';
+import { cn, formatTimeAgo, describeError } from '../lib/utils';
 import { ImageViewer } from './ImageViewer';
 import { VoiceMessage } from './VoiceMessage';
 import { Avatar } from './Avatar';
@@ -126,7 +126,7 @@ export function CommentsModal({ postId, postUserId, user, onClose, onUserClick }
         // failure so the empty state is only ever shown for a thread that is
         // genuinely empty.
         console.error('Error loading comments:', error);
-        if (!cancelled) setLoadError(error instanceof Error ? error.message : String(error));
+        if (!cancelled) setLoadError(describeError(error));
       } finally {
         if (!cancelled) setLoading(false);
       }
