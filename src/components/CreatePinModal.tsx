@@ -2,6 +2,7 @@ import React, { useState, useRef, useEffect } from 'react';
 import { MapPin as MapPinIcon, Image as ImageIcon, Video as VideoIcon, Music, X, Loader2 } from 'lucide-react';
 import { Modal, ModalHeader, ModalBody, ModalFooter } from './Modal';
 import { PinMap, useCurrentLocation } from './PinMap';
+import { LocationSearch } from './LocationSearch';
 import { ThemeSongSearch } from './ThemeSongSearch';
 import { VideoPlayer } from './VideoPlayer';
 import { useToast } from './ToastContext';
@@ -41,6 +42,8 @@ export function CreatePinModal({ user, space, onClose, onCreated }: CreatePinMod
   const [media, setMedia] = useState<DraftMedia[]>([]);
   const [showSongSearch, setShowSongSearch] = useState(false);
   const [saving, setSaving] = useState(false);
+  // Set when a search result is chosen, so the map recentres on it.
+  const [searchCenter, setSearchCenter] = useState<[number, number] | null>(null);
   const [progress, setProgress] = useState<number | null>(null);
 
   const photoRef = useRef<HTMLInputElement>(null);
@@ -164,8 +167,20 @@ export function CreatePinModal({ user, space, onClose, onCreated }: CreatePinMod
       <ModalBody className="scrollbar-thin">
         {step === 'place' ? (
           <div className="space-y-3">
+            {/* Choosing a result recentres the map AND drops the pin there.
+                Searching a place then having to find and tap it again is
+                busywork — the tap is still available to adjust. */}
+            <LocationSearch
+              userId={user.uid}
+              onPick={(place) => {
+                setSearchCenter([place.latitude, place.longitude]);
+                setDraft({ latitude: place.latitude, longitude: place.longitude });
+              }}
+            />
+
             <PinMap
-              center={center}
+              center={searchCenter ?? center}
+              zoom={searchCenter ? 15 : undefined}
               draft={draft}
               onPick={(latitude, longitude) => setDraft({ latitude, longitude })}
               className="h-[45vh] min-h-[260px]"

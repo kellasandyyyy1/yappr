@@ -3,6 +3,7 @@ import { Plus, Loader2, AlertCircle, Trash2, Users as UsersIcon, MapPin as MapPi
 import { PinMap, useCurrentLocation, spaceColor } from './PinMap';
 import { CreatePinModal } from './CreatePinModal';
 import { CreateSpaceModal } from './CreateSpaceModal';
+import { LocationSearch } from './LocationSearch';
 import { VideoPlayer } from './VideoPlayer';
 import { ThemeSongCard } from './ThemeSongCard';
 import { ImageViewer } from './ImageViewer';
@@ -43,6 +44,8 @@ export function MapView({ user, onUserClick }: MapViewProps) {
   const [resolved, setResolved] = useState<PinMedia[] | null>(null);
   const [viewingImage, setViewingImage] = useState<string | null>(null);
   const [confirmDelete, setConfirmDelete] = useState<string | null>(null);
+  // Set when a place is chosen from search, so the map pans there.
+  const [searchCenter, setSearchCenter] = useState<[number, number] | null>(null);
   const { center } = useCurrentLocation();
   const { toast } = useToast();
 
@@ -184,6 +187,16 @@ export function MapView({ user, onUserClick }: MapViewProps) {
         </div>
       )}
 
+      {/* Browsing a space: search pans the map, it does not drop anything.
+          Dropping happens in the pin composer, which has its own search. */}
+      {spaces && spaces.length > 0 && (
+        <LocationSearch
+          userId={user.uid}
+          placeholder="Find a place on the map…"
+          onPick={(place) => setSearchCenter([place.latitude, place.longitude])}
+        />
+      )}
+
       {spaces === null ? (
         <div className="flex min-h-[300px] flex-1 items-center justify-center rounded-2xl border border-line bg-surface-2">
           <Loader2 size={22} className="animate-spin text-subtle" />
@@ -205,7 +218,8 @@ export function MapView({ user, onUserClick }: MapViewProps) {
         </div>
       ) : (
         <PinMap
-          center={center}
+          center={searchCenter ?? center}
+          zoom={searchCenter ? 14 : undefined}
           className="min-h-[320px] flex-1"
           pins={visiblePins.map((p) => ({
             id: p.id,

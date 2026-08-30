@@ -443,6 +443,33 @@ async function startServer() {
     }
   });
 
+  /**
+   * GET /api/geocode — the dev-server twin of api/geocode.ts.
+   *
+   * npm run dev serves the app through this file, not through Vercel's
+   * functions, so without this route location search only works in
+   * production. Both share api/_nominatim.ts — including its User-Agent and
+   * its 1 request/second throttle — so the behaviour cannot drift.
+   */
+  app.get("/api/geocode", requireSupabaseAuth, async (req, res) => {
+    const q = typeof req.query.q === "string" ? req.query.q : "";
+
+    try {
+      const { geocode, GeocodeError } = await import("./api/_nominatim");
+      try {
+        return res.json({ results: await geocode(q) });
+      } catch (err) {
+        if (err instanceof GeocodeError) {
+          return res.status(err.status).json({ error: err.message });
+        }
+        throw err;
+      }
+    } catch (err) {
+      console.error("geocode failed:", err);
+      return res.status(502).json({ error: "Location search failed." });
+    }
+  });
+
   // API Routes
   app.get("/api/health", (req, res) => {
     res.json({ status: "ok", timestamp: new Date().toISOString() });
