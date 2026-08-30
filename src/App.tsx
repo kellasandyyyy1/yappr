@@ -245,7 +245,7 @@ export default function App() {
 
   if (loading) {
     return (
-      <div className="flex items-center justify-center min-h-screen bg-bg">
+      <div className="flex items-center justify-center min-h-dvh bg-bg">
         <div
           className="w-8 h-8 rounded-full border-2 border-accent border-t-transparent animate-spin"
           role="status"
@@ -280,7 +280,7 @@ export default function App() {
   if (!user || currentView === 'auth') {
     return (
       <ToastProvider>
-        <div className="min-h-screen bg-bg text-fg">
+        <div className="min-h-dvh bg-bg text-fg">
           <AuthView
             notice={authNotice}
             onDismissNotice={() => setAuthNotice(null)}
@@ -296,7 +296,13 @@ export default function App() {
 
   return (
     <ToastProvider>
-      <div className="min-h-screen bg-bg text-fg">
+      {/* dvh, not vh: min-h-screen is 100vh, which on mobile is the LARGE
+          viewport — the height with the toolbars hidden. With them showing,
+          the document is taller than the visible area and every page carries
+          a phantom scroll of exactly the toolbar height. Harmless on a view
+          that scrolls anyway; on the map, sized to fit exactly, it is the
+          difference between fitting and not. */}
+      <div className="min-h-dvh bg-bg text-fg">
         <PresenceTracker userId={user.uid} />
         <InstallPrompt />
 
@@ -360,7 +366,33 @@ export default function App() {
               </motion.div>
             )}
             {currentView === 'map' && user && (
-              <motion.div key="map" {...pageMotion} className="flex min-h-0 flex-1 flex-col">
+              <motion.div
+                key="map"
+                {...pageMotion}
+                className={cn(
+                  'flex min-h-0 flex-col',
+                  // The map is the only view that fills the screen instead of
+                  // scrolling, and filling needs a DEFINITE height to fill.
+                  // Nothing above here has one — the page root grows with its
+                  // content and <main> is not a flex container — so flex-1 had
+                  // nothing to distribute and the map fell back to its 320px
+                  // minimum, a square with dead space under it.
+                  //
+                  // Measured from the viewport: minus <main>'s 1.5rem top
+                  // padding, minus the bottom bar it has to stop above. dvh,
+                  // not vh, so a mobile browser's collapsing toolbar does not
+                  // push the bottom of the map underneath the nav.
+                  'h-[calc(100dvh-1.5rem-var(--nav-h)-env(safe-area-inset-bottom))]',
+                  // <main> reserves pb-28 for the fixed bottom bar. That
+                  // reservation is what the calc above already accounts for, so
+                  // leaving it would subtract the bar twice and put 112px of
+                  // black back under the map.
+                  '-mb-28',
+                  // Tablet and up keep exactly what they had: no bottom bar,
+                  // auto height, flex-1 inside the page column.
+                  'sm:mb-0 sm:h-auto sm:flex-1'
+                )}
+              >
                 <MapView
                   user={user}
                   onUserClick={(uid) => {

@@ -329,10 +329,15 @@ export function MapView({ user, onUserClick }: MapViewProps) {
           </button>
         </div>
       ) : (
+        /* min-h-0 is what lets flex-1 size this on mobile: a flex item
+           defaults to min-height:auto and will not shrink past its content,
+           so a 320px floor overflowed the bottom bar on a short viewport.
+           sm+ has no definite height to inherit, so it keeps the floor —
+           without it the map has nothing to size against and collapses. */
         <PinMap
           center={searchCenter ?? center}
           zoom={searchCenter ? 14 : undefined}
-          className="min-h-[320px] flex-1"
+          className="min-h-0 flex-1 sm:min-h-[320px]"
           fitKey={`${activeSpaceId ?? 'all'}:${shownPinCount}`}
           pins={visiblePins.map((p) => ({
             id: p.id,

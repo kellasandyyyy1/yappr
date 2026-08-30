@@ -296,6 +296,65 @@ pinMap.includes('padding: [48, 48]')
     : bad('the composer opts out');
 }
 
+// --- 6. The map fills the screen on mobile -----------------------------------
+console.log('\n6. Filling the viewport');
+
+const app = fs.readFileSync('src/App.tsx', 'utf8').replace(/\r\n/g, '\n');
+
+// flex-1 distributes REMAINING space, and there is no remainder to
+// distribute unless some ancestor has a definite height. Nothing in this
+// chain did: the page root grows with its content and <main> is not even a
+// flex container. So the map fell back to its 320px minimum — a square, with
+// the rest of the screen left black.
+app.includes('h-[calc(100dvh-1.5rem-var(--nav-h)-env(safe-area-inset-bottom))]')
+  ? ok('the map view has a definite height', 'viewport minus the top padding and the bottom bar')
+  : bad('the map view has a definite height', 'flex-1 has nothing to fill');
+
+// dvh, not vh. 100vh is the LARGE viewport — the height with the browser
+// toolbars hidden — so with them showing, a page sized to 100vh is taller
+// than the visible area.
+// Comments stripped first: the comment explaining why min-h-screen is wrong
+// contains the words min-h-screen, and matching the raw file matched that.
+const appCode = app.replace(/\{\/\*[\s\S]*?\*\/\}/g, '').replace(/\/\/.*$/gm, '');
+!appCode.includes('min-h-screen')
+  ? ok('the page root is sized in dvh', 'no phantom scroll from a collapsing toolbar')
+  : bad('the page root is sized in dvh', 'min-h-screen is 100vh');
+
+// <main> reserves pb-28 for the fixed bar. The calc already subtracts the
+// bar, so leaving that padding subtracts it twice and puts the black band
+// straight back.
+app.includes('-mb-28')
+  ? ok('the bottom-bar reservation is cancelled', 'or the bar would be subtracted twice')
+  : bad('the bottom-bar reservation is cancelled');
+
+// Tablet and up have no bottom bar and a page that scrolls; they keep the
+// layout they had.
+app.includes('sm:mb-0 sm:h-auto sm:flex-1')
+  ? ok('tablet and desktop are untouched')
+  : bad('tablet and desktop are untouched');
+
+// A flex item defaults to min-height:auto and refuses to shrink below its
+// content. A 320px floor inside a now-definite column overflows the bottom
+// bar on a short viewport instead of fitting — the same min-height trap this
+// file already guards elsewhere, arriving from the opposite direction.
+view.includes('min-h-0 flex-1 sm:min-h-[320px]')
+  ? ok('the map can shrink to fit on mobile', 'min-h-0, with the 320 floor kept for sm+')
+  : bad('the map can shrink to fit on mobile');
+
+// The arithmetic, so a future padding change that breaks it is visible here
+// rather than on someone's phone.
+{
+  const NAV = 56, MAIN_PT = 24, MAPVIEW_PY = 32, CHROME = 150;
+  let worst = Infinity;
+  for (const [dvh, safe] of [[667, 0], [844, 34], [851, 24], [375, 0]]) {
+    const column = dvh - MAIN_PT - NAV - safe;
+    worst = Math.min(worst, column - MAPVIEW_PY - CHROME);
+  }
+  worst > 0
+    ? ok('the map gets real height on every common phone', `smallest case ${worst}px`)
+    : bad('the map gets real height on every common phone', `${worst}px`);
+}
+
 console.log('\n' + '─'.repeat(60));
 console.log(failures === 0 ? 'MAP RENDER OK' : `${failures} failure(s).`);
 process.exit(failures === 0 ? 0 : 1);
