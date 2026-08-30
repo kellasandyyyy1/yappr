@@ -170,13 +170,46 @@ const view = fs.readFileSync('src/components/MapView.tsx', 'utf8').replace(/\r\n
   ? ok('the chip does not show the member count')
   : bad('the chip does not show the member count', 'members and pins will disagree');
 
-view.includes('const pinsPerSpace = (pins ?? []).reduce')
-  ? ok('pin counts are derived from the pins array', 'the same one the map draws')
-  : bad('pin counts are derived from the pins array');
+view.includes('const pinCountFor = (spaceId: string | null) =>')
+  ? ok('there is one counting function', 'pinCountFor')
+  : bad('there is one counting function');
 
-view.includes('pinsPerSpace.get(s.id) ?? 0')
-  ? ok('the chip reads that derivation')
-  : bad('the chip reads that derivation');
+// Every number on the screen, named. If a new one appears that does not go
+// through pinCountFor, this is where it should fail.
+{
+  const sites = [
+    ['header',      '${shownPinCount} pin${shownPinCount === 1'],
+    ['chip badge',  '{pinCountFor(s.id)}'],
+    ['chip tooltip', '${pinCountFor(s.id)} pin(s)'],
+    ['empty state', 'shownPinCount === 0 && !error'],
+  ];
+  for (const [where, needle] of sites) {
+    view.includes(needle)
+      ? ok(`${where} counts through it`)
+      : bad(`${where} counts through it`, needle);
+  }
+}
+
+// visiblePins is for DRAWING markers. The moment a label counts it instead,
+// there are two ways to ask the same question again — which is exactly how
+// the badge and the header came to disagree.
+!view.includes('visiblePins.length')
+  ? ok('no label counts the render array', 'visiblePins draws, pinCountFor counts')
+  : bad('no label counts the render array', 'a second source has crept back in');
+
+// A count field on the space object is an invitation to fetch the number a
+// second time. It was declared and never used; it is gone.
+{
+  const lib = fs.readFileSync('src/lib/pins.ts', 'utf8');
+  !lib.includes('pinCount')
+    ? ok('MapSpace has no pinCount field', 'nothing to fill from a second query')
+    : bad('MapSpace has no pinCount field');
+
+  // And no query anywhere asks the database to count pins.
+  !/from\('pins'\)[\s\S]{0,120}count:/.test(lib)
+    ? ok('no server-side pin count query', 'one fetch, counted locally')
+    : bad('no server-side pin count query');
+}
 
 // Derived, not fetched: a second query for the same fact is what drifts.
 !/from\('pins'\)[\s\S]{0,200}count:/.test(view)
@@ -209,6 +242,59 @@ view.includes('spaces !== null && pins !== null && spaces.length > 0')
 view.includes('{pins !== null && (')
   ? ok('the chip shows no number while loading')
   : bad('the chip shows no number while loading');
+
+// --- 5. The map frames what is selected --------------------------------------
+console.log('\n5. Framing the selection');
+
+// Switching tabs changed the pin list and left the viewport alone, so the
+// pins for the newly chosen space were usually off-screen.
+pinMap.includes('function FitToPins(')
+  ? ok('PinMap can frame a set of pins')
+  : bad('PinMap can frame a set of pins');
+
+view.includes('fitKey={`${activeSpaceId')
+  ? ok('MapView keys the frame on the selected space')
+  : bad('MapView keys the frame on the selected space');
+
+// The key carries the count as well as the space, so the map also frames
+// when the pins first arrive — pins load after the first render, and a key
+// of just the space id would never change on that.
+view.includes(':${shownPinCount}`}')
+  ? ok('and on the pins arriving', 'the key carries the count too')
+  : bad('and on the pins arriving');
+
+// Refitting on the pins array itself would snap the map back every time
+// anyone panned, and on every poll.
+/\}, \[fitKey\]\);/.test(pinMap)
+  ? ok('it fits on the key, not on every render')
+  : bad('it fits on the key, not on every render');
+
+// fitBounds on an empty list throws, and 0,0 is the Atlantic.
+pinMap.includes('if (points.length === 0) return;')
+  ? ok('an empty space keeps its view', 'rather than fitting to nothing')
+  : bad('an empty space keeps its view');
+
+// A single point has no extent for fitBounds to work with.
+pinMap.includes('if (points.length === 1)')
+  ? ok('one pin gets setView, not fitBounds')
+  : bad('one pin gets setView, not fitBounds');
+
+// Two pins ten metres apart would otherwise fit to maximum zoom.
+pinMap.includes('maxZoom: FIT_MAX_ZOOM')
+  ? ok('the fit is zoom-capped', 'nearby pins do not slam to street level')
+  : bad('the fit is zoom-capped');
+
+pinMap.includes('padding: [48, 48]')
+  ? ok('with padding', 'markers are not flush against the edge')
+  : bad('with padding');
+
+// The composer places a pin; it must not be yanked around while doing it.
+{
+  const composer = fs.readFileSync('src/components/CreatePinModal.tsx', 'utf8');
+  !composer.includes('fitKey')
+    ? ok('the composer opts out', 'undefined fitKey leaves its viewport alone')
+    : bad('the composer opts out');
+}
 
 console.log('\n' + '─'.repeat(60));
 console.log(failures === 0 ? 'MAP RENDER OK' : `${failures} failure(s).`);

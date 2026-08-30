@@ -45,7 +45,6 @@ export interface MapSpace {
   createdBy: string;
   createdAt: string;
   members: SpaceMember[];
-  pinCount?: number;
 }
 
 export interface Pin {

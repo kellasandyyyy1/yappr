@@ -144,6 +144,43 @@ function Recenter({ center, zoom }: { center: [number, number] | null; zoom?: nu
   return null;
 }
 
+/** Two pins a few metres apart would otherwise fit to street level. */
+const FIT_MAX_ZOOM = 16;
+/** A single pin has no extent, so it gets a view rather than a fit. */
+const SINGLE_PIN_ZOOM = 15;
+
+/**
+ * Frames a set of pins when `fitKey` changes.
+ *
+ * Keyed rather than reactive to the pins themselves: refitting on every
+ * render would yank the map back the moment anyone panned, and refitting on
+ * array identity would do it on every poll. The key changes when the space
+ * selection changes, and when the number of pins in that selection changes
+ * — so it frames on switching tabs, and on the pins arriving for the first
+ * time, which is the same moment as far as a reader is concerned.
+ */
+function FitToPins({ points, fitKey }: { points: Array<[number, number]>; fitKey?: string }) {
+  const map = useMap();
+  useEffect(() => {
+    if (fitKey === undefined) return;
+    // An empty space keeps whatever view it had. Fitting to nothing throws,
+    // and defaulting to 0,0 would drop the reader in the Atlantic.
+    if (points.length === 0) return;
+
+    if (points.length === 1) {
+      map.setView(points[0], Math.max(map.getZoom(), SINGLE_PIN_ZOOM));
+      return;
+    }
+    map.fitBounds(L.latLngBounds(points), {
+      padding: [48, 48],
+      maxZoom: FIT_MAX_ZOOM,
+    });
+    // points is derived from the same data the key summarises.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [fitKey]);
+  return null;
+}
+
 export interface MapPin {
   id: string;
   latitude: number;
@@ -168,6 +205,12 @@ interface PinMapProps {
   onPinClick?: (id: string) => void;
   center?: [number, number] | null;
   zoom?: number;
+  /**
+   * Changing this frames every pin currently passed in. Undefined leaves
+   * the viewport alone entirely, which is what the pin composer wants —
+   * it is placing a pin, not surveying them.
+   */
+  fitKey?: string;
   className?: string;
 }
 
@@ -178,6 +221,7 @@ export function PinMap({
   onPinClick,
   center,
   zoom = DEFAULT_ZOOM,
+  fitKey,
   className,
 }: PinMapProps) {
   // Icons are cached per colour+dimmed pair: divIcon builds an HTML string,
@@ -275,6 +319,11 @@ export function PinMap({
         />
 
         <Recenter center={center ?? null} zoom={zoom} />
+
+        <FitToPins
+          points={pins.map((p) => [p.latitude, p.longitude] as [number, number])}
+          fitKey={fitKey}
+        />
         {onPick && <TapHandler onPick={onPick} />}
 
         {pins.map((p, i) => (

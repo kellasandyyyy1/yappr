@@ -177,10 +177,26 @@ export function MapView({ user, onUserClick }: MapViewProps) {
    * "1 pin". Derived rather than fetched, so the chip and the map cannot
    * disagree — there is only one number now.
    */
-  const pinsPerSpace = (pins ?? []).reduce<Map<string, number>>(
+  const pinsPerSpaceMap = (pins ?? []).reduce<Map<string, number>>(
     (acc, pin) => acc.set(pin.spaceId, (acc.get(pin.spaceId) ?? 0) + 1),
     new Map()
   );
+
+  /**
+   * THE pin count. Every number on this screen comes through here.
+   *
+   * Not because one expression is tidier than two, but because two
+   * expressions are how this has broken three times: a badge counting
+   * members beside a header counting pins, a comment count from a
+   * different query than the comments. A second way to ask is a second
+   * answer waiting to happen, so there is one.
+   *
+   * null means "all spaces", matching activeSpaceId.
+   */
+  const pinCountFor = (spaceId: string | null) =>
+    spaceId === null ? (pins ?? []).length : pinsPerSpaceMap.get(spaceId) ?? 0;
+
+  const shownPinCount = pinCountFor(activeSpaceId);
   const activeSpace = (spaces ?? []).find((s) => s.id === activeSpaceId) ?? null;
   const spaceOf = (id: string) => (spaces ?? []).find((s) => s.id === id) ?? null;
 
@@ -209,7 +225,7 @@ export function MapView({ user, onUserClick }: MapViewProps) {
               ? 'Loading…'
               : spaces.length === 0
                 ? 'No spaces yet'
-                : `${visiblePins.length} pin${visiblePins.length === 1 ? '' : 's'} in ${activeSpace ? activeSpace.name : `${spaces.length} space${spaces.length === 1 ? '' : 's'}`}`}
+                : `${shownPinCount} pin${shownPinCount === 1 ? '' : 's'} in ${activeSpace ? activeSpace.name : `${spaces.length} space${spaces.length === 1 ? '' : 's'}`}`}
           </p>
         </div>
         <div className="flex shrink-0 items-center gap-2">
@@ -261,7 +277,7 @@ export function MapView({ user, onUserClick }: MapViewProps) {
             <button
               key={s.id}
               onClick={() => setActiveSpaceId(s.id === activeSpaceId ? null : s.id)}
-              title={`${s.name} — ${pinsPerSpace.get(s.id) ?? 0} pin(s)`}
+              title={`${s.name} — ${pinCountFor(s.id)} pin(s)`}
               className={cn(
                 'flex h-8 shrink-0 items-center gap-1.5 rounded-full border px-3 text-xs font-medium transition-colors',
                 s.id === activeSpaceId ? 'border-accent bg-accent/15 text-fg' : 'border-line text-muted hover:text-fg'
@@ -276,7 +292,7 @@ export function MapView({ user, onUserClick }: MapViewProps) {
               {/* Blank until the pins are in. A "0" while they are still
                   loading is a claim about the space, and the wrong one. */}
               {pins !== null && (
-                <span className="text-subtle">{pinsPerSpace.get(s.id) ?? 0}</span>
+                <span className="text-subtle">{pinCountFor(s.id)}</span>
               )}
             </button>
           ))}
@@ -317,6 +333,7 @@ export function MapView({ user, onUserClick }: MapViewProps) {
           center={searchCenter ?? center}
           zoom={searchCenter ? 14 : undefined}
           className="min-h-[320px] flex-1"
+          fitKey={`${activeSpaceId ?? 'all'}:${shownPinCount}`}
           pins={visiblePins.map((p) => ({
             id: p.id,
             latitude: p.latitude,
@@ -338,7 +355,7 @@ export function MapView({ user, onUserClick }: MapViewProps) {
       {/* pins !== null matters: without it this said "No pins in X yet" during
           the load, which is a statement about the space rather than about the
           request that has not come back. */}
-      {spaces !== null && pins !== null && spaces.length > 0 && visiblePins.length === 0 && !error && (
+      {spaces !== null && pins !== null && spaces.length > 0 && shownPinCount === 0 && !error && (
         <p className="text-center text-sm text-muted">
           {activeSpace ? `No pins in ${activeSpace.name} yet.` : 'No pins yet. Drop one to remember a place.'}
         </p>
