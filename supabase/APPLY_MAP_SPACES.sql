@@ -31,11 +31,28 @@
 begin;
 
 -- --- retire the individual-sharing model -------------------------------------
--- pin_shares is gone; membership answers what it used to. can_view_pin() went
+-- pin_shares is gone; membership answers what it used to. can_view_pin() goes
 -- with it — its whole body was a share lookup.
-drop policy if exists pin_shares_select_visible on public.pin_shares;
-drop policy if exists pin_shares_write_own on public.pin_shares;
+--
+-- ORDER MATTERS HERE. A function cannot be dropped while a policy still
+-- references it:
+--
+--   ERROR 2BP01: cannot drop function can_view_pin(uuid) because other objects
+--   depend on it — policy pins_select_visible, policy pin_media_select_visible
+--
+-- Both are recreated further down against is_space_member(), so dropping them
+-- up front costs nothing. DROP ... CASCADE would also clear the error, but it
+-- would remove whatever else happened to depend on the function without
+-- saying so; naming them keeps that explicit.
+drop policy if exists pins_select_visible on public.pins;
+drop policy if exists pin_media_select_visible on public.pin_media;
+
+-- Dropping the table takes its own policies with it. Dropping them by name
+-- first would break re-runs: `drop policy if exists … on public.pin_shares`
+-- raises "relation does not exist" once the table is gone, and IF EXISTS on
+-- the policy does not cover a missing table.
 drop table if exists public.pin_shares;
+
 drop function if exists public.can_view_pin(uuid);
 
 -- --- roles -------------------------------------------------------------------
@@ -135,8 +152,15 @@ as $$
   );
 $$;
 
-revoke all on function public.is_space_member(uuid) from public;
-revoke all on function public.is_space_owner(uuid) from public;
+-- `from public, anon, authenticated`, not `from public` alone.
+--
+-- This project has already been caught by the narrow form once: Supabase's
+-- default privileges layer per-role grants on top of PostgreSQL's PUBLIC
+-- grant, so revoking only from PUBLIC leaves anon and authenticated holding
+-- their own grants and the revoke silently does nothing. Every other hardened
+-- function here (0006, 0008, 0009, 0010) names all three for that reason.
+revoke execute on function public.is_space_member(uuid) from public, anon, authenticated;
+revoke execute on function public.is_space_owner(uuid) from public, anon, authenticated;
 grant execute on function public.is_space_member(uuid) to authenticated;
 grant execute on function public.is_space_owner(uuid) to authenticated;
 
