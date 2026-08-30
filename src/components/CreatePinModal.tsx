@@ -100,11 +100,26 @@ export function CreatePinModal({ user, space, onClose, onCreated }: CreatePinMod
     setSaving(true);
     try {
       const stamp = Date.now();
-      const uploaded: Array<{ type: PinMediaType; url?: string; youtubeVideoId?: string; posterUrl?: string }> = [];
+      const uploaded: Array<{
+        type: PinMediaType;
+        url?: string;
+        youtubeVideoId?: string;
+        songTitle?: string;
+        songArtist?: string;
+        posterUrl?: string;
+      }> = [];
 
       for (const [i, m] of media.entries()) {
         if (m.type === 'song' && m.song) {
-          uploaded.push({ type: 'song', youtubeVideoId: m.song.youtubeId });
+          // The title was being dropped here: the picker knows it, the
+          // database had nowhere to put it, so every pin showed "Attached
+          // song". 0021 added the columns.
+          uploaded.push({
+            type: 'song',
+            youtubeVideoId: m.song.youtubeId,
+            songTitle: m.song.title,
+            songArtist: m.song.artist || undefined,
+          });
           continue;
         }
         if (!m.file) continue;

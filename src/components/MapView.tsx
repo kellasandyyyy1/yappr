@@ -13,6 +13,7 @@ import { useToast } from './ToastContext';
 import { pins as pinsApi, spaces as spacesApi, Pin, PinMedia, MapSpace } from '../lib/pins';
 import { formatTimeAgo, describeError, cn } from '../lib/utils';
 import { reverseGeocode } from '../lib/geocode';
+import { lookupSongTitle } from '../lib/youtube';
 import { AnimatePresence } from 'motion/react';
 import type { User } from '../types';
 
@@ -50,6 +51,10 @@ export function MapView({ user, onUserClick }: MapViewProps) {
   // "Westminster, London" for the open pin. Null until it resolves, and
   // null forever if it cannot — the card falls back to coordinates.
   const [placeName, setPlaceName] = useState<string | null>(null);
+  // Names for songs attached before 0021, which stored only a video id.
+  // Keyed by video id, kept for the life of the screen: the same track on
+  // two pins is looked up once.
+  const [songNames, setSongNames] = useState<Record<string, { title: string; artist: string }>>({});
   const { center } = useCurrentLocation();
   const { toast } = useToast();
 
@@ -101,6 +106,30 @@ export function MapView({ user, onUserClick }: MapViewProps) {
     });
     return () => controller.abort();
   }, [openPin]);
+
+  // Fill in the names of songs stored without one. New pins carry their
+  // own title and never reach this; it exists so pins made before the
+  // column existed stop saying "Attached song" forever.
+  useEffect(() => {
+    if (!openPin || !resolved) return;
+    let cancelled = false;
+    const missing = resolved
+      .filter((m) => m.type === 'song' && m.youtubeVideoId && !m.songTitle)
+      .map((m) => m.youtubeVideoId!)
+      .filter((id) => !songNames[id]);
+    if (missing.length === 0) return;
+    (async () => {
+      for (const id of missing) {
+        const found = await lookupSongTitle(id);
+        if (cancelled) return;
+        if (found) setSongNames((prev) => ({ ...prev, [id]: found }));
+      }
+    })();
+    return () => { cancelled = true; };
+    // songNames is read but deliberately not a dependency: it is written by
+    // this effect, and listing it would re-run on every title found.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [openPin, resolved]);
 
   /** Stable colour per space, by list position. */
   const colorOf = useMemo(() => {
@@ -434,8 +463,15 @@ export function MapView({ user, onUserClick }: MapViewProps) {
                           variant="inline"
                           song={{
                             youtubeId: m.youtubeVideoId!,
-                            title: 'Attached song',
-                            artist: '',
+                            // Stored title first, then the oEmbed lookup, then
+                            // the placeholder. Only a pin made before 0021
+                            // whose video has since been deleted lands on the
+                            // placeholder now.
+                            title:
+                              m.songTitle
+                              ?? songNames[m.youtubeVideoId!]?.title
+                              ?? 'Attached song',
+                            artist: m.songArtist ?? songNames[m.youtubeVideoId!]?.artist ?? '',
                             coverUrl: `https://i.ytimg.com/vi/${m.youtubeVideoId}/mqdefault.jpg`,
                             startTime: 0,
                           }}
@@ -489,7 +525,13 @@ export function MapView({ user, onUserClick }: MapViewProps) {
                         <div
                           className={cn(
                             'grid gap-2',
-                            photos.length > 1 ? 'grid-cols-2' : 'grid-cols-1'
+                            // A single square at full width is most of a
+                            // screen for one photo, and the card ran past the
+                            // bottom of the modal. Capped, it matches the
+                            // height of a two-column row.
+                            photos.length > 1
+                              ? 'grid-cols-2'
+                              : 'mx-auto w-full max-w-[280px] grid-cols-1'
                           )}
                         >
                           {photos.map((m) => (
@@ -529,27 +571,6 @@ export function MapView({ user, onUserClick }: MapViewProps) {
                   );
                 })()
               )}
-
-              {/* 5. The map, last and small. It is context for the name, not
-                  the subject — 128px rather than the 160px+ that made it read
-                  as the main content. Coordinates live under it, which is the
-                  only place they are shown at all now. */}
-              <div className="pt-1">
-                <PinMap
-                  center={[openPin.latitude, openPin.longitude]}
-                  zoom={15}
-                  pins={[{
-                    id: openPin.id,
-                    latitude: openPin.latitude,
-                    longitude: openPin.longitude,
-                    color: colorOf.get(openPin.spaceId),
-                  }]}
-                  className="h-32"
-                />
-                <p className="mt-1.5 text-[11px] tabular-nums text-subtle">
-                  {openPin.latitude.toFixed(5)}, {openPin.longitude.toFixed(5)}
-                </p>
-              </div>
 
               {/* A fade pinned to the bottom edge of the scroll area, so a
                   half-visible row of photos reads as "keep scrolling" rather

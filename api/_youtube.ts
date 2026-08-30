@@ -165,3 +165,58 @@ export async function searchMusic(
   cacheSet(cacheKey, tracks);
   return tracks;
 }
+
+export interface YouTubeTitle {
+  title: string;
+  artist: string;
+}
+
+/**
+ * The title and channel of one video, via oEmbed.
+ *
+ * Free and unkeyed, unlike the Data API: filling in the names of songs
+ * attached before 0021 is not worth spending the same daily quota the song
+ * search needs, at 100 units a call.
+ *
+ * Cached for a day, nulls included — a deleted video stays deleted, and
+ * re-asking on every pin open would be the cost this avoids.
+ */
+const OEMBED = "https://www.youtube.com/oembed";
+const TITLE_TTL_MS = 24 * 60 * 60 * 1000;
+const titleCache = new Map<string, { value: YouTubeTitle | null; at: number }>();
+
+export async function lookupTitle(videoId: string): Promise<YouTubeTitle | null> {
+  const hit = titleCache.get(videoId);
+  if (hit && Date.now() - hit.at < TITLE_TTL_MS) return hit.value;
+
+  const url = `${OEMBED}?url=${encodeURIComponent(`https://www.youtube.com/watch?v=${videoId}`)}&format=json`;
+  const res = await fetch(url);
+
+  // 400/401/403/404 all mean "no title for this one" — unknown, private,
+  // deleted, or embedding disabled. 400 is the one that matters and was not
+  // obvious: oEmbed answers 400, not 404, for an id it cannot resolve, so
+  // treating only 404 as absent turned every dead song into a thrown error
+  // and a 502. Cached as null, so a dead id is asked about once.
+  if (!res.ok) {
+    if (res.status === 400 || res.status === 401 || res.status === 403 || res.status === 404) {
+      titleCache.set(videoId, { value: null, at: Date.now() });
+      return null;
+    }
+    throw new Error(`oEmbed returned ${res.status}`);
+  }
+
+  const body = (await res.json()) as { title?: string; author_name?: string };
+  if (!body.title) {
+    titleCache.set(videoId, { value: null, at: Date.now() });
+    return null;
+  }
+
+  const track: YouTubeTitle = {
+    title: decodeEntities(body.title),
+    // Auto-generated music channels are named "Artist - Topic", which is
+    // plumbing rather than a name anyone wants to read.
+    artist: decodeEntities((body.author_name ?? "").replace(/ - Topic$/, "")),
+  };
+  titleCache.set(videoId, { value: track, at: Date.now() });
+  return track;
+}

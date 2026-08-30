@@ -117,9 +117,22 @@ mapView.includes('<Avatar user={openPin.creator} size="xl" />')
   ? ok('video stays height-capped', '240px')
   : bad('video stays height-capped');
 
-/className="h-32"/.test(mapView)
-  ? ok('the mini-map is still 128px and last')
-  : bad('the mini-map is still 128px');
+// The mini-map is gone. The place name at the top already says where this
+// is, and a 128px map of a location stated two lines above was restating it
+// less legibly — plus the coordinates under it, a third telling.
+const detailBody = mapView.slice(mapView.indexOf("<ModalBody"), mapView.indexOf("</ModalBody>"));
+!detailBody.includes("<PinMap")
+  ? ok('the pin detail has no mini-map', 'the place name already says where this is')
+  : bad('the pin detail has no mini-map');
+
+!detailBody.includes("toFixed(5)")
+  ? ok('and no coordinates line', 'it went with the map it labelled')
+  : bad('and no coordinates line');
+
+// The map on the screen behind must still be there.
+mapView.includes("<PinMap")
+  ? ok('the main map is untouched')
+  : bad('the main map is untouched');
 
 // The name printed twice — once in the title bar, once as the heading — after
 // it moved into the body and was left in the header too.
@@ -199,8 +212,9 @@ mapView.includes("style={{ borderColor: colorOf.get(openPin.spaceId) }}")
 // (The thumbnails used to be object-contain. They crop now — see the square
 // cell assertions below, and the lightbox check that keeps the original whole.)
 
-mapView.includes(`photos.length > 1 ? 'grid-cols-2' : 'grid-cols-1'`)
-  ? ok('two columns from two photos up', 'a lone photo spans the card')
+// The ternary is written across lines now, so match its parts.
+mapView.includes('photos.length > 1') && mapView.includes("? 'grid-cols-2'")
+  ? ok('two columns from two photos up', 'one photo gets a capped single column')
   : bad('two columns from two photos up');
 
 // The cover photo must still appear in the grid. Skipping it there is the
@@ -256,6 +270,12 @@ mapView.includes("resolved.filter((m) => m.type === 'song' && m.youtubeVideoId).
 
 
 // Uniform cells. Ragged rows read as a broken layout rather than as photos.
+// One square at full card width was ~460px of a single photo and ran the
+// card past the bottom of the modal.
+mapView.includes("'mx-auto w-full max-w-[280px] grid-cols-1'")
+  ? ok('a lone photo is capped', 'it no longer overflows the card')
+  : bad('a lone photo is capped');
+
 mapView.includes('aspect-square overflow-hidden')
   ? ok('grid cells are a fixed square')
   : bad('grid cells are a fixed square');

@@ -106,7 +106,11 @@ for (const file of callers) {
       : bad(`${file.split('/').pop()} sizes the map`, `"${cls}" has no height — the map will be 0px tall`);
   }
 }
-checked >= 3 ? ok('all PinMap uses checked', `${checked}`) : bad('all PinMap uses checked', `${checked}`);
+// Two now, not three: the pin detail dropped its mini-map — the place name at
+// the top of that card already says where the pin is. The guard is that every
+// REMAINING use is sized, so the count moves with the code; a map rendered
+// 0px tall is the bug this whole section exists for.
+checked >= 2 ? ok('all PinMap uses checked', `${checked}`) : bad('all PinMap uses checked', `${checked}`);
 
 // --- 3. Errors are readable ---------------------------------------------------
 console.log('\n3. Error readability');

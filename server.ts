@@ -412,6 +412,28 @@ async function startServer() {
   });
 
   /**
+   * GET /api/youtube-title — the dev-server twin of api/youtube-title.ts.
+   *
+   * Names songs attached before 0021, which stored only a video id. Uses
+   * oEmbed, so unlike the search above it needs no key and spends no quota
+   * — which is the whole reason it is a separate route.
+   */
+  app.get("/api/youtube-title", requireSupabaseAuth, async (req, res) => {
+    const id = typeof req.query.id === "string" ? req.query.id : "";
+    if (!/^[\w-]{11}$/.test(id)) return res.status(400).json({ error: "Bad video id" });
+
+    try {
+      const { lookupTitle } = await import("./api/_youtube");
+      const track = await lookupTitle(id);
+      if (!track) return res.status(404).json({ error: "No such video" });
+      return res.json(track);
+    } catch (err) {
+      console.error("youtube-title failed:", err);
+      return res.status(502).json({ error: "Lookup failed" });
+    }
+  });
+
+  /**
    * GET /api/gif-search — the dev-server twin of api/gif-search.ts.
    *
    * npm run dev serves the app through this file, not through Vercel's

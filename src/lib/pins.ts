@@ -23,6 +23,11 @@ export interface PinMedia {
   type: PinMediaType;
   url?: string;
   youtubeVideoId?: string;
+  /** The song's name, captured when it was attached (0021). Absent on
+   *  anything attached before that, which the card fills in from the
+   *  oEmbed lookup instead. */
+  songTitle?: string;
+  songArtist?: string;
   posterUrl?: string;
   orderIndex: number;
 }
@@ -68,7 +73,7 @@ const SPACE_SELECT = `
 const PIN_SELECT = `
   id, space_id, creator_id, latitude, longitude, name, caption, created_at,
   users!pins_creator_id_fkey(${USER_FIELDS}),
-  pin_media(id, media_type, media_url, youtube_video_id, poster_url, order_index)
+  pin_media(id, media_type, media_url, youtube_video_id, song_title, song_artist, poster_url, order_index)
 `;
 
 const mapUser = (row: any): User | undefined =>
@@ -118,6 +123,8 @@ const mapPin = (row: any): Pin => ({
       type: m.media_type as PinMediaType,
       url: m.media_url ?? undefined,
       youtubeVideoId: m.youtube_video_id ?? undefined,
+      songTitle: m.song_title ?? undefined,
+      songArtist: m.song_artist ?? undefined,
       posterUrl: m.poster_url ?? undefined,
       orderIndex: m.order_index ?? 0,
     }))
@@ -240,6 +247,8 @@ export const pins = {
       type: PinMediaType;
       url?: string | null;
       youtubeVideoId?: string | null;
+      songTitle?: string | null;
+      songArtist?: string | null;
       posterUrl?: string | null;
     }>;
   }): Promise<string> {
@@ -264,6 +273,8 @@ export const pins = {
           media_type: m.type,
           media_url: m.url ?? null,
           youtube_video_id: m.youtubeVideoId ?? null,
+          song_title: m.songTitle ?? null,
+          song_artist: m.songArtist ?? null,
           poster_url: m.posterUrl ?? null,
           order_index,
         }))

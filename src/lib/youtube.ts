@@ -61,3 +61,28 @@ export async function searchSongs(
   const body = await res.json();
   return Array.isArray(body?.tracks) ? (body.tracks as YouTubeTrack[]) : [];
 }
+
+/**
+ * The name of a song attached before 0021, when only the video id was
+ * stored. Returns null rather than throwing: a missing title is a cosmetic
+ * shortfall on a card that renders perfectly well without it, and a pin
+ * detail must not fail to open because YouTube is unreachable.
+ */
+export async function lookupSongTitle(
+  videoId: string
+): Promise<{ title: string; artist: string } | null> {
+  try {
+    const { data } = await supabase.auth.getSession();
+    const token = data.session?.access_token;
+    if (!token) return null;
+
+    const res = await fetch(`/api/youtube-title?id=${encodeURIComponent(videoId)}`, {
+      headers: { Authorization: `Bearer ${token}` },
+    });
+    if (!res.ok) return null;
+    const body = (await res.json()) as { title?: string; artist?: string };
+    return body.title ? { title: body.title, artist: body.artist ?? "" } : null;
+  } catch {
+    return null;
+  }
+}
