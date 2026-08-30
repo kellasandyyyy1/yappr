@@ -41,7 +41,11 @@ export interface Post {
   content: string;
   imageUrl?: string;
   voiceUrl?: string;
-  type?: 'text' | 'image' | 'voice';
+  /** Public URL in the post-videos bucket. */
+  videoUrl?: string;
+  /** First-frame poster, so the feed never renders a black rectangle. */
+  videoPosterUrl?: string;
+  type?: 'text' | 'image' | 'voice' | 'video';
   imageUrls?: string[];
   likesCount: number;
   commentsCount: number;
@@ -81,14 +85,17 @@ export interface Message {
   content: string;
   createdAt: number;
   isRead: boolean;
-  type?: 'text' | 'image' | 'voice' | 'post';
+  type?: 'text' | 'image' | 'voice' | 'video' | 'post';
   imageUrl?: string;
   voiceUrl?: string;
+  /** `supabase://chat-videos/...` — private bucket, signed on read. */
+  videoUrl?: string;
+  videoPosterUrl?: string;
   reactions?: Record<string, string[]>;
   replyToId?: string;
   replyToContent?: string;
   replyToSenderName?: string;
-  replyToType?: 'text' | 'image' | 'voice' | 'post';
+  replyToType?: 'text' | 'image' | 'voice' | 'video' | 'post';
   postId?: string;
   readBy?: string[]; // UIDs of users who have opened the message
   /** UIDs whose client has received the message — the "Delivered" tier. */

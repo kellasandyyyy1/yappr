@@ -5,10 +5,11 @@ import {
   follows as followsApi,
   reactions as reactionsApi,
   uploadFile,
+  uploadFileWithProgress,
 } from '../lib/db';
 import { User, Message, Chat } from '../types';
 import { motion, AnimatePresence } from 'motion/react';
-import { Send, ChevronLeft, Search, Plus, X, UserPlus, Trash2, MessageSquare, Mic, Image as ImageIcon, Loader2, Play, Pause, Square, Volume2, Check, CheckCheck, Clock, Reply, AtSign, Users, MoreVertical, LogOut, Settings as SettingsIcon, Camera, Eye, EyeOff, Film } from 'lucide-react';
+import { Send, ChevronLeft, Search, Plus, X, UserPlus, Trash2, MessageSquare, Mic, Image as ImageIcon, Loader2, Play, Pause, Square, Volume2, Check, CheckCheck, Clock, Reply, AtSign, Users, MoreVertical, LogOut, Settings as SettingsIcon, Camera, Eye, EyeOff, Film, Video as VideoIcon } from 'lucide-react';
 import { ImageViewer } from './ImageViewer';
 import { VoiceMessage } from './VoiceMessage';
 import { EmojiReactions, EmojiPickerButton } from './EmojiReactions';
@@ -21,6 +22,8 @@ import { cn, formatTimeAgo } from '../lib/utils';
 import { messageTime, formatClock, startsNewCluster } from '../lib/messageGroups';
 import { GifPicker } from './GifPicker';
 import { Gif } from '../lib/giphy';
+import { VideoPlayer } from './VideoPlayer';
+import { validateVideo, extractPoster, VIDEO_ACCEPT } from '../lib/video';
 import { useToast } from './ToastContext';
 import { sendPushNotification } from '../lib/sendPush';
 
@@ -198,6 +201,10 @@ export function ChatView({ user, onProfileClick, onUserClick, onChatOpenChange, 
   const [recordingTime, setRecordingTime] = useState(0);
   const [pendingAttachment, setPendingAttachment] = useState<{ type: 'image' | 'voice'; url: string } | null>(null);
   const [showGifPicker, setShowGifPicker] = useState(false);
+  // Poster shown while the file goes up, plus 0..1 progress. A 40MB upload
+  // with no feedback reads as a hang.
+  const [videoUpload, setVideoUpload] = useState<{ posterUrl: string; progress: number } | null>(null);
+  const videoInputRef = useRef<HTMLInputElement>(null);
   const [viewingImage, setViewingImage] = useState<string | null>(null);
   const [replyingTo, setReplyingTo] = useState<Message | null>(null);
   const [showGroupDetails, setShowGroupDetails] = useState(false);
@@ -651,6 +658,78 @@ export function ChatView({ user, onProfileClick, onUserClick, onChatOpenChange, 
    * It is sent as type "image" with a plain https URL, so it renders through
    * the existing bubble and animates — <img> animates GIFs natively.
    */
+  /**
+   * Picks a video, pulls a poster frame locally, uploads both, sends.
+   *
+   * chat-videos, not `chat`: that bucket caps at 25MB and allows only
+   * image/* and audio/*, so a video is rejected before any policy is
+   * consulted. Both buckets are private, so the row stores the
+   * `supabase://` form and the player signs it on read.
+   */
+  const handleVideoSelect = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    e.target.value = ""; // so picking the same file twice re-fires onChange
+    if (!file || !selectedChat) return;
+
+    const problem = validateVideo(file);
+    if (problem) { toast(problem, "error"); return; }
+
+    let poster: Awaited<ReturnType<typeof extractPoster>> | null = null;
+    try {
+      poster = await extractPoster(file);
+    } catch (err) {
+      const message = err instanceof Error ? err.message : "Could not read that video.";
+      console.error("[chat] poster extraction failed", { name: file.name, type: file.type, err });
+      toast(message, "error");
+      return;
+    }
+
+    setVideoUpload({ posterUrl: poster.objectUrl, progress: 0 });
+
+    try {
+      const stamp = Date.now();
+      const extension = file.name.split(".").pop()?.toLowerCase() || "mp4";
+      const base = `${selectedChat.id}/${user.uid}-${stamp}`;
+
+      const videoUrl = await uploadFileWithProgress(
+        "chat-videos",
+        `${base}.${extension}`,
+        file,
+        (fraction) => setVideoUpload((prev) => (prev ? { ...prev, progress: fraction } : prev)),
+        file.type || "video/mp4"
+      );
+
+      const videoPosterUrl = await uploadFile(
+        "chat-videos",
+        `${base}.poster.jpg`,
+        poster.blob,
+        "image/jpeg"
+      );
+
+      await chatsApi.send({
+        conversationId: selectedChat.id,
+        senderId: user.uid,
+        content: "Sent a video",
+        type: "video",
+        videoUrl,
+        videoPosterUrl,
+        replyToId: replyingTo?.id ?? null,
+      });
+
+      const others = selectedChat.participants.filter((pid) => pid !== user.uid);
+      const title = selectedChat.type === "group" ? (selectedChat.name ?? "Group") : user.displayName;
+      others.forEach((pid) => sendPushNotification(pid, title, "Sent a video", `/chat?id=${selectedChat.id}`));
+
+      setReplyingTo(null);
+    } catch (err) {
+      console.error("Error sending video:", err);
+      toast(err instanceof Error && err.message ? err.message : "Could not send that video", "error");
+    } finally {
+      URL.revokeObjectURL(poster.objectUrl);
+      setVideoUpload(null);
+    }
+  };
+
   const sendGif = async (gif: Gif) => {
     if (!selectedChat) return;
     setShowGifPicker(false);
@@ -1134,7 +1213,13 @@ export function ChatView({ user, onProfileClick, onUserClick, onChatOpenChange, 
                                 </p>
                               </div>
                             )}
-                            {msg.type === 'image' && msg.imageUrl ? (
+                            {msg.videoUrl ? (
+                              <VideoPlayer
+                                src={msg.videoUrl}
+                                poster={msg.videoPosterUrl}
+                                className="w-full max-w-[280px]"
+                              />
+                            ) : msg.type === 'image' && msg.imageUrl ? (
                               <div className="cursor-zoom-in space-y-2" onClick={() => setViewingImage(msg.imageUrl!)}>
                                 <img src={msg.imageUrl} alt="Shared photo" className="w-full max-w-full rounded-xl object-cover" loading="lazy" decoding="async" />
                                 {msg.content !== 'Sent an image' && <p className="px-2 pb-1">{msg.content}</p>}
@@ -1449,6 +1534,23 @@ export function ChatView({ user, onProfileClick, onUserClick, onChatOpenChange, 
                     >
                       <ImageIcon size={18} />
                     </button>
+                    <input
+                      type="file"
+                      ref={videoInputRef}
+                      onChange={handleVideoSelect}
+                      accept={VIDEO_ACCEPT}
+                      className="hidden"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => videoInputRef.current?.click()}
+                      disabled={!!videoUpload}
+                      aria-label="Send a video"
+                      title="Send a video"
+                      className="w-10 h-10 rounded-full hover:bg-surface-2 flex items-center justify-center text-muted hover:text-fg transition-colors disabled:opacity-40"
+                    >
+                      <VideoIcon size={18} />
+                    </button>
                     <button
                       type="button"
                       onClick={() => setShowGifPicker(true)}
@@ -1485,6 +1587,34 @@ export function ChatView({ user, onProfileClick, onUserClick, onChatOpenChange, 
         </div>
 
         {/* Action Confirmation */}
+        {/* Upload progress. Videos take long enough that a still composer reads as
+            broken, so the poster and a real percentage are shown throughout. */}
+        {videoUpload && (
+          <div className="pointer-events-none absolute inset-x-0 bottom-24 z-20 flex justify-center px-4">
+            <div className="pointer-events-auto flex w-full max-w-sm items-center gap-3 rounded-xl border border-line bg-surface p-2.5 shadow-[0_6px_20px_rgba(0,0,0,0.45)]">
+              <img
+                src={videoUpload.posterUrl}
+                alt=""
+                className="h-12 w-12 shrink-0 rounded-lg border border-line object-cover"
+              />
+              <div className="min-w-0 flex-1">
+                <div className="mb-1 flex items-center justify-between text-[11px]">
+                  <span className="text-muted">
+                    {videoUpload.progress >= 1 ? "Sending…" : "Uploading video"}
+                  </span>
+                  <span className="tabular-nums text-subtle">{Math.round(videoUpload.progress * 100)}%</span>
+                </div>
+                <div className="h-1 overflow-hidden rounded-full bg-surface-3">
+                  <div
+                    className="h-full rounded-full bg-accent transition-[width] duration-150"
+                    style={{ width: `${Math.round(videoUpload.progress * 100)}%` }}
+                  />
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
+
         {showGifPicker && (
           <GifPicker
             onClose={() => setShowGifPicker(false)}

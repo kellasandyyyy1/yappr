@@ -186,9 +186,94 @@ function describeUploadFailure(bucket: string, error: any): string {
   return `Upload to "${bucket}" failed: ${raw || 'unknown error'}`;
 }
 
+/**
+ * The buckets this app writes to.
+ *
+ * Video lives in its own two buckets rather than in `posts`/`chat`: those cap
+ * at 25MB and allow only image/* and audio/* MIME types, so a video upload is
+ * rejected at the bucket before any policy is consulted. Verified against the
+ * live project — see scripts/migrate/diagnose-video-readiness.ts.
+ */
+export type StorageBucket = 'avatars' | 'posts' | 'chat' | 'post-videos' | 'chat-videos';
+
+/**
+ * Buckets whose objects are NOT publicly readable. Reads of these go through
+ * resolveStorageUrl(), which mints a short-lived signed URL.
+ */
+const PRIVATE_BUCKETS = new Set<StorageBucket>(['chat', 'chat-videos']);
+
+/**
+ * Uploads with progress.
+ *
+ * supabase-js's storage client exposes no progress callback, and for a 40MB
+ * video that means a UI that sits still for a minute — the same failure mode
+ * as the music player stuck on "Warming up". So this posts to the Storage REST
+ * endpoint directly via XHR, which does report upload progress.
+ *
+ * Returns the same value uploadFile() would: a public URL, or the
+ * `supabase://bucket/path` scheme form for a private bucket.
+ */
+export async function uploadFileWithProgress(
+  bucket: StorageBucket,
+  objectPath: string,
+  file: Blob,
+  onProgress?: (fraction: number) => void,
+  contentType?: string
+): Promise<string> {
+  const resolvedType = contentType ?? (file as File).type ?? "application/octet-stream";
+
+  const { data: sessionData } = await supabase.auth.getSession();
+  const accessToken = sessionData.session?.access_token;
+  if (!accessToken) {
+    throw new UploadError("You are signed out. Sign in and try again.", bucket, objectPath, null);
+  }
+
+  const endpoint = `${SUPABASE_URL}/storage/v1/object/${bucket}/${objectPath}`;
+
+  await new Promise<void>((resolve, reject) => {
+    const xhr = new XMLHttpRequest();
+    xhr.open("POST", endpoint, true);
+    xhr.setRequestHeader("Authorization", `Bearer ${accessToken}`);
+    xhr.setRequestHeader("apikey", SUPABASE_ANON_KEY);
+    xhr.setRequestHeader("Content-Type", resolvedType);
+    // Same semantics as the SDK's { upsert: true }.
+    xhr.setRequestHeader("x-upsert", "true");
+
+    xhr.upload.onprogress = (e) => {
+      if (e.lengthComputable && onProgress) onProgress(e.loaded / e.total);
+    };
+
+    xhr.onload = () => {
+      if (xhr.status >= 200 && xhr.status < 300) return resolve();
+      let message = xhr.responseText;
+      try { message = JSON.parse(xhr.responseText)?.message ?? message; } catch { /* not json */ }
+      console.error("[storage] upload failed", {
+        bucket, objectPath, contentType: resolvedType, sizeBytes: file.size,
+        status: xhr.status, message,
+      });
+      reject(new UploadError(
+        describeUploadFailure(bucket, { status: xhr.status, message }),
+        bucket, objectPath, { status: xhr.status, message }
+      ));
+    };
+
+    xhr.onerror = () => reject(new UploadError(
+      `Upload to "${bucket}" failed: the network request did not complete.`,
+      bucket, objectPath, null));
+    xhr.onabort = () => reject(new UploadError("Upload cancelled.", bucket, objectPath, null));
+
+    xhr.send(file);
+  });
+
+  onProgress?.(1);
+
+  if (PRIVATE_BUCKETS.has(bucket)) return `supabase://${bucket}/${objectPath}`;
+  return supabase.storage.from(bucket).getPublicUrl(objectPath).data.publicUrl;
+}
+
 /** Uploads a file and returns the value to store in the database. */
 export async function uploadFile(
-  bucket: 'avatars' | 'posts' | 'chat',
+  bucket: StorageBucket,
   objectPath: string,
   file: Blob,
   contentType?: string
@@ -219,6 +304,6 @@ export async function uploadFile(
   }
 
   // Private buckets get the scheme form so reads go through resolveStorageUrl.
-  if (bucket === 'chat') return `supabase://${bucket}/${objectPath}`;
+  if (PRIVATE_BUCKETS.has(bucket)) return `supabase://${bucket}/${objectPath}`;
   return supabase.storage.from(bucket).getPublicUrl(objectPath).data.publicUrl;
 }

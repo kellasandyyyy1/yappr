@@ -1,4 +1,4 @@
-import { supabase, resolveStorageUrl, uploadFile } from './supabase';
+import { supabase, resolveStorageUrl, uploadFile, uploadFileWithProgress } from './supabase';
 import type { User, Post, Comment, Message, Chat, Notification, ThemeSong, MusicHistory } from '../types';
 import type { RealtimeChannel } from '@supabase/supabase-js';
 
@@ -124,6 +124,8 @@ export function mapPost(row: Row): Post {
     imageUrls: images,
     imageUrl: images[0],
     voiceUrl: row.voice_url ?? undefined,
+    videoUrl: row.video_url ?? undefined,
+    videoPosterUrl: row.video_poster_url ?? undefined,
     likesCount: row.likes_count ?? 0,
     commentsCount: row.comments_count ?? 0,
     createdAt: row.created_at,
@@ -146,6 +148,8 @@ export function mapComment(row: Row): Comment {
     type: row.type ?? 'text',
     imageUrl: row.image_url ?? undefined,
     voiceUrl: row.voice_url ?? undefined,
+    videoUrl: row.video_url ?? undefined,
+    videoPosterUrl: row.video_poster_url ?? undefined,
     replyToId: row.reply_to_id ?? undefined,
     createdAt: row.created_at,
     user: mapUser(row.users),
@@ -162,6 +166,8 @@ export function mapMessage(row: Row): Message {
     type: row.type ?? 'text',
     imageUrl: row.image_url ?? undefined,
     voiceUrl: row.voice_url ?? undefined,
+    videoUrl: row.video_url ?? undefined,
+    videoPosterUrl: row.video_poster_url ?? undefined,
     replyToId: row.reply_to_id ?? undefined,
     postId: row.shared_post_id ?? undefined,
     createdAt: row.created_at,
@@ -218,7 +224,8 @@ const USER_FIELDS = 'id, username, display_name, email, photo_url, bio, status, 
 const USER_WITH_SONG = `${USER_FIELDS}, theme_song:songs(*)`;
 
 const POST_SELECT = `
-  id, user_id, content, type, visibility, voice_url, likes_count, comments_count, created_at,
+  id, user_id, content, type, visibility, voice_url, video_url, video_poster_url,
+  likes_count, comments_count, created_at,
   users!posts_user_id_fkey(${USER_FIELDS}),
   songs(*),
   post_images(position, url),
@@ -228,6 +235,7 @@ const POST_SELECT = `
 
 const MESSAGE_SELECT = `
   id, conversation_id, sender_id, content, type, image_url, voice_url,
+  video_url, video_poster_url,
   reply_to_id, shared_post_id, created_at,
   message_receipts(user_id, delivered_at, read_at),
   message_reactions(user_id, emoji)
@@ -724,9 +732,10 @@ export const posts = {
   },
 
   async create(input: {
-    userId: string; content: string; type?: 'text' | 'image' | 'voice';
+    userId: string; content: string; type?: 'text' | 'image' | 'voice' | 'video';
     visibility?: 'public' | 'followers' | 'private';
     imageUrls?: string[]; voiceUrl?: string | null; songId?: string | null;
+    videoUrl?: string | null; videoPosterUrl?: string | null;
   }): Promise<string> {
     const { data, error } = await supabase.from('posts').insert({
       user_id: input.userId,
@@ -734,6 +743,8 @@ export const posts = {
       type: input.type ?? 'text',
       visibility: input.visibility ?? 'public',
       voice_url: input.voiceUrl ?? null,
+      video_url: input.videoUrl ?? null,
+      video_poster_url: input.videoPosterUrl ?? null,
       song_id: input.songId ?? null,
     }).select('id').single();
     if (error) throw error;
@@ -1036,8 +1047,9 @@ export const chats = {
 
   async send(input: {
     conversationId: string; senderId: string; content: string;
-    type?: 'text' | 'image' | 'voice' | 'post';
+    type?: 'text' | 'image' | 'voice' | 'video' | 'post';
     imageUrl?: string | null; voiceUrl?: string | null;
+    videoUrl?: string | null; videoPosterUrl?: string | null;
     replyToId?: string | null; sharedPostId?: string | null;
   }): Promise<string> {
     // No lastMessage write and no updatedAt write — the touch_conversation
@@ -1051,6 +1063,8 @@ export const chats = {
       type: input.type ?? 'text',
       image_url: input.imageUrl ?? null,
       voice_url: input.voiceUrl ?? null,
+      video_url: input.videoUrl ?? null,
+      video_poster_url: input.videoPosterUrl ?? null,
       reply_to_id: input.replyToId ?? null,
       shared_post_id: input.sharedPostId ?? null,
     }).select('id').single();
@@ -1419,4 +1433,4 @@ export const songs = {
   },
 };
 
-export { resolveStorageUrl, uploadFile };
+export { resolveStorageUrl, uploadFile, uploadFileWithProgress };

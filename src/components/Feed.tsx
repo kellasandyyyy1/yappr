@@ -14,6 +14,7 @@ import { Heart, MessageCircle, Share2, Plus, X, Image as ImageIcon, Edit3, Trash
 import { cn, formatTimeAgo } from '../lib/utils';
 import { ImageViewer } from './ImageViewer';
 import { VoiceMessage } from './VoiceMessage';
+import { VideoPlayer } from './VideoPlayer';
 import { EmojiReactions } from './EmojiReactions';
 import { Avatar } from './Avatar';
 import { PostSkeleton } from './Skeleton';
@@ -597,6 +598,18 @@ export function Feed({ user, onNewPost, onProfileClick, onUserClick, onShowComme
             <div className="rounded-2xl border border-line bg-surface-2 p-4">
               <VoiceMessage url={post.voiceUrl} />
             </div>
+          )}
+
+          {/* Poster + play button. Never autoplay: a feed that starts videos
+              on scroll is the same failure as the music card that started
+              every song on load. preload="metadata" inside VideoPlayer keeps a
+              feed of several videos from downloading all of them. */}
+          {post.videoUrl && (
+            <VideoPlayer
+              src={post.videoUrl}
+              poster={post.videoPosterUrl}
+              className="border border-line"
+            />
           )}
 
           {post.song && (

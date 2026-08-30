@@ -6,10 +6,10 @@ import {
   songs as songsApi,
   notifications as notificationsApi,
 } from '../lib/db';
-import { uploadFile, UploadError } from '../lib/supabase';
+import { uploadFile, uploadFileWithProgress, UploadError } from '../lib/supabase';
 import { User, ThemeSong, PostVisibility } from '../types';
 import { motion, AnimatePresence } from 'motion/react';
-import { X, Image as ImageIcon, Loader2, Mic, Square, Trash2, AtSign, Music, Globe, Users as UsersIcon, Lock, Check, ChevronDown, Film } from 'lucide-react';
+import { X, Image as ImageIcon, Loader2, Mic, Square, Trash2, AtSign, Music, Globe, Users as UsersIcon, Lock, Check, ChevronDown, Film, Video as VideoIcon, AlertCircle } from 'lucide-react';
 import { cn } from '../lib/utils';
 import { sendPushNotification } from '../lib/sendPush';
 import { VoiceMessage } from './VoiceMessage';
@@ -17,6 +17,15 @@ import { useToast } from './ToastContext';
 import { ThemeSongSearch } from './ThemeSongSearch';
 import { GifPicker } from './GifPicker';
 import { Gif } from '../lib/giphy';
+import { VideoPlayer } from './VideoPlayer';
+import {
+  validateVideo,
+  extractPoster,
+  formatBytes,
+  formatDuration as formatClipDuration,
+  VIDEO_ACCEPT,
+  VideoPoster,
+} from '../lib/video';
 import { Avatar } from './Avatar';
 import { Modal, ModalHeader, ModalBody, ModalFooter } from './Modal';
 
@@ -48,6 +57,16 @@ export function CreatePostModal({ user, onClose, onSuccess }: CreatePostModalPro
   const [selectedSong, setSelectedSong] = useState<ThemeSong | null>(null);
   const [selectedGif, setSelectedGif] = useState<Gif | null>(null);
   const [showGifPicker, setShowGifPicker] = useState(false);
+  const [selectedVideo, setSelectedVideo] = useState<File | null>(null);
+  const [videoPoster, setVideoPoster] = useState<VideoPoster | null>(null);
+  const [videoPreviewUrl, setVideoPreviewUrl] = useState<string | null>(null);
+  const [videoError, setVideoError] = useState<string | null>(null);
+  const [preparingVideo, setPreparingVideo] = useState(false);
+  // null when idle; 0..1 while the file is going up. A 40MB upload with no
+  // progress reads as a hang — the same failure as the music player stuck on
+  // "Warming up".
+  const [videoProgress, setVideoProgress] = useState<number | null>(null);
+  const videoInputRef = useRef<HTMLInputElement>(null);
   const [showMusicSearch, setShowMusicSearch] = useState(false);
   const [visibility, setVisibility] = useState<PostVisibility>('public');
   const [showVisibilityMenu, setShowVisibilityMenu] = useState(false);
@@ -142,9 +161,63 @@ export function CreatePostModal({ user, onClose, onSuccess }: CreatePostModalPro
     setImagePreviews(prev => prev.filter((_, i) => i !== index));
   };
 
+  /**
+   * Validates, then pulls a poster frame out of the file locally — nothing is
+   * uploaded until the post is submitted, so picking the wrong clip costs
+   * nothing. Showing the frame is the point: a filename tells you nothing
+   * about which video you just attached.
+   */
+  const handleVideoSelect = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    // Reset immediately: picking the same file twice must re-fire onChange.
+    e.target.value = "";
+    if (!file) return;
+
+    const problem = validateVideo(file);
+    if (problem) {
+      setVideoError(problem);
+      toast(problem, "error");
+      return;
+    }
+
+    setVideoError(null);
+    setPreparingVideo(true);
+    try {
+      const poster = await extractPoster(file);
+      setSelectedVideo(file);
+      setVideoPoster(poster);
+      setVideoPreviewUrl(URL.createObjectURL(file));
+    } catch (err) {
+      // A codec this browser cannot decode. Named, not swallowed.
+      const message = err instanceof Error ? err.message : "Could not read that video.";
+      console.error("[composer] poster extraction failed", { name: file.name, type: file.type, err });
+      setVideoError(message);
+      toast(message, "error");
+    } finally {
+      setPreparingVideo(false);
+    }
+  };
+
+  const clearVideo = () => {
+    if (videoPoster) URL.revokeObjectURL(videoPoster.objectUrl);
+    if (videoPreviewUrl) URL.revokeObjectURL(videoPreviewUrl);
+    setSelectedVideo(null);
+    setVideoPoster(null);
+    setVideoPreviewUrl(null);
+    setVideoError(null);
+    setVideoProgress(null);
+  };
+
+  // Object URLs outlive the component unless revoked, and a few 40MB blobs
+  // held open is real memory.
+  useEffect(() => () => {
+    if (videoPoster) URL.revokeObjectURL(videoPoster.objectUrl);
+    if (videoPreviewUrl) URL.revokeObjectURL(videoPreviewUrl);
+  }, [videoPoster, videoPreviewUrl]);
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!content.trim() && selectedImages.length === 0 && !pendingVoice && !selectedSong && !selectedGif) return;
+    if (!content.trim() && selectedImages.length === 0 && !pendingVoice && !selectedSong && !selectedGif && !selectedVideo) return;
     
     setIsPosting(true);
     try {
@@ -175,6 +248,32 @@ export function CreatePostModal({ user, onClose, onSuccess }: CreatePostModalPro
         );
       }
 
+      // The video and its poster go to post-videos, which is a separate bucket
+      // from `posts`: that one caps at 25MB and allows only image/* and audio/*,
+      // so a video upload is rejected before any policy is consulted.
+      let videoUrl: string | null = null;
+      let videoPosterUrl: string | null = null;
+      if (selectedVideo) {
+        const stamp = Date.now();
+        const extension = selectedVideo.name.split(".").pop()?.toLowerCase() || "mp4";
+        setVideoProgress(0);
+        videoUrl = await uploadFileWithProgress(
+          "post-videos",
+          `${user.uid}/${stamp}.${extension}`,
+          selectedVideo,
+          setVideoProgress,
+          selectedVideo.type || "video/mp4"
+        );
+        if (videoPoster) {
+          videoPosterUrl = await uploadFile(
+            "post-videos",
+            `${user.uid}/${stamp}.poster.jpg`,
+            videoPoster.blob,
+            "image/jpeg"
+          );
+        }
+      }
+
       // Songs are shared rows keyed on the YouTube id, not copied into
       // every post that references the same track.
       const songId = selectedSong ? await songsApi.upsert(selectedSong) : null;
@@ -182,11 +281,13 @@ export function CreatePostModal({ user, onClose, onSuccess }: CreatePostModalPro
       const postId = await postsApi.create({
         userId: user.uid,
         content: content || (pendingVoice ? 'Shared a voice message' : (selectedSong ? 'Soundtrack for today' : '')),
-        type: pendingVoice ? 'voice' : (imageUrls.length > 0 ? 'image' : 'text'),
+        type: selectedVideo ? 'video' : pendingVoice ? 'voice' : (imageUrls.length > 0 ? 'image' : 'text'),
         visibility,
         imageUrls,
         voiceUrl,
         songId,
+        videoUrl,
+        videoPosterUrl,
       });
 
       // One query for every @name, not one per name.
@@ -305,7 +406,7 @@ export function CreatePostModal({ user, onClose, onSuccess }: CreatePostModalPro
   };
 
   const canSubmit =
-    !!content.trim() || selectedImages.length > 0 || !!pendingVoice || !!selectedSong || !!selectedGif;
+    !!content.trim() || selectedImages.length > 0 || !!pendingVoice || !!selectedSong || !!selectedGif || !!selectedVideo;
   const activeVisibility =
     VISIBILITY_OPTIONS.find((o) => o.id === visibility) ?? VISIBILITY_OPTIONS[0];
   const VisibilityIcon = activeVisibility.icon;
@@ -420,6 +521,86 @@ export function CreatePostModal({ user, onClose, onSuccess }: CreatePostModalPro
                   <span className="absolute bottom-1.5 left-1.5 rounded bg-black/70 px-1.5 py-0.5 text-[10px] font-semibold text-white">
                     GIF
                   </span>
+                </motion.div>
+              )}
+
+              {(selectedVideo || preparingVideo || videoError) && (
+                <motion.div
+                  initial={{ opacity: 0, scale: 0.98 }}
+                  animate={{ opacity: 1, scale: 1 }}
+                  exit={{ opacity: 0, scale: 0.98 }}
+                  className="overflow-hidden rounded-2xl border border-line bg-surface-2"
+                >
+                  {preparingVideo ? (
+                    <div className="flex items-center gap-2.5 p-4">
+                      <Loader2 size={16} className="animate-spin text-accent" />
+                      <span className="text-sm text-muted">Reading the video…</span>
+                    </div>
+                  ) : videoError ? (
+                    <div className="flex items-start gap-2.5 p-4">
+                      <AlertCircle size={16} className="mt-0.5 shrink-0 text-danger" />
+                      <div className="min-w-0 flex-1">
+                        <p className="text-sm text-danger">{videoError}</p>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={clearVideo}
+                        aria-label="Dismiss"
+                        className="shrink-0 text-subtle transition-colors hover:text-fg"
+                      >
+                        <X size={15} />
+                      </button>
+                    </div>
+                  ) : selectedVideo && videoPreviewUrl ? (
+                    <>
+                      {/* The real player, on the local file. What you see before posting
+                          is what the feed will show afterwards. */}
+                      <div className="relative">
+                        <VideoPlayer
+                          src={videoPreviewUrl}
+                          poster={videoPoster?.objectUrl}
+                          className="max-h-64"
+                        />
+                        <button
+                          type="button"
+                          onClick={clearVideo}
+                          aria-label="Remove video"
+                          className="absolute right-2 top-2 z-10 flex h-7 w-7 items-center justify-center rounded-full bg-black/70 text-white transition-colors hover:bg-black/90"
+                        >
+                          <X size={14} />
+                        </button>
+                      </div>
+
+                      <div className="flex items-center gap-2 px-3 py-2">
+                        <VideoIcon size={13} className="shrink-0 text-subtle" />
+                        <span className="truncate text-xs text-muted">{selectedVideo.name}</span>
+                        <span className="ml-auto shrink-0 text-xs tabular-nums text-subtle">
+                          {videoPoster ? formatClipDuration(videoPoster.durationSeconds) : ""}
+                          {videoPoster ? " · " : ""}
+                          {formatBytes(selectedVideo.size)}
+                        </span>
+                      </div>
+
+                      {/* Progress. Videos take long enough that a still UI reads as broken,
+                          so this shows a real percentage rather than a spinner. */}
+                      {videoProgress !== null && (
+                        <div className="border-t border-line px-3 py-2">
+                          <div className="mb-1 flex items-center justify-between text-[11px]">
+                            <span className="text-muted">
+                              {videoProgress >= 1 ? "Finishing up…" : "Uploading video"}
+                            </span>
+                            <span className="tabular-nums text-subtle">{Math.round(videoProgress * 100)}%</span>
+                          </div>
+                          <div className="h-1 overflow-hidden rounded-full bg-surface-3">
+                            <div
+                              className="h-full rounded-full bg-accent transition-[width] duration-150"
+                              style={{ width: `${Math.round(videoProgress * 100)}%` }}
+                            />
+                          </div>
+                        </div>
+                      )}
+                    </>
+                  ) : null}
                 </motion.div>
               )}
             </AnimatePresence>
@@ -586,6 +767,29 @@ export function CreatePostModal({ user, onClose, onSuccess }: CreatePostModalPro
                   {selectedImages.length}
                 </span>
               )}
+            </button>
+
+            <input
+              type="file"
+              ref={videoInputRef}
+              onChange={handleVideoSelect}
+              accept={VIDEO_ACCEPT}
+              className="hidden"
+            />
+            <button
+              type="button"
+              onClick={() => videoInputRef.current?.click()}
+              disabled={isRecording || !!pendingVoice || preparingVideo}
+              title="Attach a video"
+              className={cn(
+                'flex h-11 items-center gap-2 rounded-xl border px-3 text-sm font-medium transition-colors duration-100 disabled:cursor-not-allowed disabled:opacity-40',
+                selectedVideo
+                  ? 'border-accent/40 bg-accent/10 text-accent'
+                  : 'border-line bg-surface-2 text-muted hover:text-fg'
+              )}
+            >
+              {preparingVideo ? <Loader2 size={18} className="animate-spin" /> : <VideoIcon size={18} />}
+              <span className="hidden sm:inline">Video</span>
             </button>
 
             <button
