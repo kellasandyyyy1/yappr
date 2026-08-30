@@ -131,6 +131,17 @@ export function MapView({ user, onUserClick }: MapViewProps) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [openPin, resolved]);
 
+  /**
+   * The open pin's cover: its first photo, or a video's poster.
+   *
+   * Component-level now. It used to be computed inside the JSX so it could
+   * share a wrapper with the avatar that overlapped it — with the overlap
+   * gone, so is the reason for the nesting.
+   */
+  const cover =
+    resolved?.find((m) => m.type === 'photo' && m.url)?.url
+    ?? resolved?.find((m) => m.type === 'video' && m.posterUrl)?.posterUrl;
+
   /** Stable colour per space, by list position. */
   const colorOf = useMemo(() => {
     const byId = new Map<string, string>();
@@ -348,138 +359,100 @@ export function MapView({ user, onUserClick }: MapViewProps) {
             </ModalHeader>
 
             <ModalBody className="scrollbar-thin space-y-4 pb-8">
-              {/* Cover photo first, then who and where — the profile-page
-                  shape. The picture of the place is the thing worth opening
-                  the card for, so it is what the card opens on.
+              {/* Cover photo, full bleed. The body pads its children by 20px
+                  (24 on desktop), so the banner reaches back out through that
+                  padding to touch both edges; -mt-4 cancels the top padding so
+                  it sits flush under the title bar. */}
+              {cover && (
+                <div className="relative -mx-5 -mt-4 h-32 overflow-hidden border-b border-line bg-black sm:-mx-6">
+                  <img src={cover} alt="" loading="lazy" className="h-full w-full object-cover" />
+                  {/* Darkened at the bottom, the way headers are, so the strip
+                      reads as chrome rather than as a grid tile that drifted. */}
+                  <div
+                    aria-hidden="true"
+                    className="pointer-events-none absolute inset-x-0 bottom-0 h-2/3 bg-gradient-to-t from-black/70 via-black/20 to-transparent"
+                  />
+                </div>
+              )}
 
-                  Cover and identity are ONE child of the body rather than
-                  two. The body spaces its children with space-y-4, which
-                  sets margin-top through a `> * + *` selector — two classes
-                  of specificity, so it outranks a plain -mt-8 on the avatar
-                  and would silently cancel the overlap. Nesting them puts
-                  the negative margin inside a container with no space-y of
-                  its own, where it simply works. */}
+              {/* Where this is, then who put it there — in that order of size.
+
+                  The avatar was briefly 64px and straddling the cover, which
+                  is the shape of a profile page: one person, their picture,
+                  their header. A space is shared, so the person who dropped a
+                  pin is a supporting detail, not the subject. It is back to
+                  32px on the attribution line, and the place name leads.
+
+                  One block rather than two, so the attribution sits close to
+                  the name it belongs to instead of taking the body's full
+                  16px gap. */}
               <div>
-                {(() => {
-                  const cover =
-                    resolved?.find((m) => m.type === 'photo' && m.url)?.url
-                    ?? resolved?.find((m) => m.type === 'video' && m.posterUrl)?.posterUrl;
+                <h2 id="pin-detail" className="truncate text-xl font-bold leading-tight text-fg">
+                  {openPin.name || openPin.caption || 'A place'}
+                </h2>
+                {/* Reverse-geocoded where it resolves, coordinates where it
+                    does not. The sea has no name and that is fine. */}
+                <p className="mt-1 flex items-center gap-1.5 truncate text-sm text-muted">
+                  <MapPinIcon size={13} className="shrink-0 text-accent" />
+                  <span className="truncate">
+                    {placeName ?? `${openPin.latitude.toFixed(4)}, ${openPin.longitude.toFixed(4)}`}
+                  </span>
+                </p>
 
-                  return (
-                    <>
-                      {/* Full bleed. The body pads its children by 20px (24 on
-                          desktop), so the banner has to reach back out through
-                          that padding to touch both edges the way a cover
-                          photo does — hence the negative margins rather than
-                          a width. -mt-4 cancels the body top padding so it
-                          sits flush under the title bar. */}
-                      {cover && (
-                        <div className="relative -mx-5 -mt-4 h-32 overflow-hidden border-b border-line bg-black sm:-mx-6">
-                          <img src={cover} alt="" loading="lazy" className="h-full w-full object-cover" />
-                          <div
-                            aria-hidden="true"
-                            className="pointer-events-none absolute inset-x-0 bottom-0 h-2/3 bg-gradient-to-t from-black/70 via-black/20 to-transparent"
-                          />
-                        </div>
-                      )}
-
-                      {/* The avatar straddles the cover's bottom edge when there
-                          is one, and sits normally when there is not — a pin
-                          with only a song has nothing to overlap. items-end so
-                          the name stays clear of the picture instead of being
-                          half-printed over it. */}
-                      {/* relative, and it matters: the cover above is
-                          positioned, and CSS paints positioned boxes after
-                          in-flow ones no matter the DOM order. A static row
-                          here would put the overlapping half of the avatar
-                          BEHIND the cover image — the overlap would simply
-                          not be visible. */}
-                      <div className={cn('relative flex items-end gap-3', cover && '-mt-8')}>
-                        <button
-                          type="button"
-                          onClick={() => onUserClick?.(openPin.creatorId)}
-                          className="press shrink-0 rounded-full"
-                          aria-label="Open profile"
-                        >
-                          {/* Two rings: the outer one is the modal's own
-                              background, which cuts a clean hole in the cover
-                              rather than letting the avatar sit flat on it;
-                              the inner keeps the space colour that ties this
-                              pin to its marker. */}
-                          <span className="block rounded-full ring-4 ring-surface">
-                            <span
-                              className="block rounded-full border-2"
-                              style={{ borderColor: colorOf.get(openPin.spaceId) }}
-                            >
-                              <Avatar user={openPin.creator} size="xl" />
-                            </span>
-                          </span>
-                        </button>
-
-                        <div className="min-w-0 flex-1 pb-0.5">
-                          <h2 id="pin-detail" className="truncate text-xl font-bold leading-tight text-fg">
-                            {openPin.name || openPin.caption || 'A place'}
-                          </h2>
-                          {/* Reverse-geocoded where it resolves, coordinates
-                              where it does not. The sea has no name and that
-                              is fine. */}
-                          <p className="mt-1 flex items-center gap-1.5 truncate text-sm text-muted">
-                            <MapPinIcon size={13} className="shrink-0 text-accent" />
-                            <span className="truncate">
-                              {placeName ?? `${openPin.latitude.toFixed(4)}, ${openPin.longitude.toFixed(4)}`}
-                            </span>
-                          </p>
-                        </div>
-                      </div>
-                    </>
-                  );
-                })()}
-              </div>
-
-              {/* Who and when, on one line. The avatar that used to anchor
-                  this row is the large one above now: two pictures of the same
-                  person a centimetre apart is not attribution, it is
-                  repetition. The name keeps the link to the profile. */}
-              <div className="flex items-center gap-2">
-                <p className="min-w-0 flex-1 truncate text-xs text-muted">
+                <div className="mt-2.5 flex items-center gap-2.5">
                   <button
                     type="button"
                     onClick={() => onUserClick?.(openPin.creatorId)}
-                    className="press font-semibold text-fg"
+                    className="press shrink-0"
+                    aria-label="Open profile"
                   >
-                    {openPin.creatorId === user.uid ? 'You' : openPin.creator?.displayName ?? 'Someone'}
+                    {/* The space colour stays, at 2px on a 32px avatar: it is
+                        what ties this pin to its marker on the map, and losing
+                        it would leave nothing in the card connecting the two. */}
+                    <span
+                      className="block rounded-full border-2"
+                      style={{ borderColor: colorOf.get(openPin.spaceId) }}
+                    >
+                      <Avatar user={openPin.creator} size="sm" />
+                    </span>
                   </button>
-                  {' · '}added {formatTimeAgo(openPin.createdAt)}
-                </p>
 
-                {/* The song rides this row rather than owning a block of its
-                    own. The composer appends songs without a cap, so more than
-                    one is possible; they wrap rather than being dropped. */}
-                {resolved && resolved.some((m) => m.type === 'song' && m.youtubeVideoId) && (
-                  <div className="flex min-w-0 shrink flex-wrap justify-end gap-1">
-                    {resolved.filter((m) => m.type === 'song' && m.youtubeVideoId).map((m) => (
-                      <div key={m.id} className="min-w-0">
-                        <ThemeSongCard
-                          variant="inline"
-                          song={{
-                            youtubeId: m.youtubeVideoId!,
-                            // Stored title first, then the oEmbed lookup, then
-                            // the placeholder. Only a pin made before 0021
-                            // whose video has since been deleted lands on the
-                            // placeholder now.
-                            title:
-                              m.songTitle
-                              ?? songNames[m.youtubeVideoId!]?.title
-                              ?? 'Attached song',
-                            artist: m.songArtist ?? songNames[m.youtubeVideoId!]?.artist ?? '',
-                            coverUrl: `https://i.ytimg.com/vi/${m.youtubeVideoId}/mqdefault.jpg`,
-                            startTime: 0,
-                          }}
-                        />
-                      </div>
-                    ))}
-                  </div>
-                )}
+                  <p className="min-w-0 flex-1 truncate text-xs text-muted">
+                    <span className="font-semibold text-fg">
+                      {openPin.creatorId === user.uid ? 'You' : openPin.creator?.displayName ?? 'Someone'}
+                    </span>
+                    {' · '}added {formatTimeAgo(openPin.createdAt)}
+                  </p>
+
+                  {/* The song rides this row rather than owning a block of its
+                      own. The composer appends songs without a cap, so more
+                      than one is possible; they wrap rather than being cut. */}
+                  {resolved && resolved.some((m) => m.type === 'song' && m.youtubeVideoId) && (
+                    <div className="flex min-w-0 shrink flex-wrap justify-end gap-1">
+                      {resolved.filter((m) => m.type === 'song' && m.youtubeVideoId).map((m) => (
+                        <div key={m.id} className="min-w-0">
+                          <ThemeSongCard
+                            variant="inline"
+                            song={{
+                              youtubeId: m.youtubeVideoId!,
+                              // Stored title first, then the oEmbed lookup, then
+                              // the placeholder. Only a pin made before 0021
+                              // whose video has since been deleted lands on the
+                              // placeholder now.
+                              title:
+                                m.songTitle
+                                ?? songNames[m.youtubeVideoId!]?.title
+                                ?? 'Attached song',
+                              artist: m.songArtist ?? songNames[m.youtubeVideoId!]?.artist ?? '',
+                              coverUrl: `https://i.ytimg.com/vi/${m.youtubeVideoId}/mqdefault.jpg`,
+                              startTime: 0,
+                            }}
+                          />
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
               </div>
               {/* 3. The note, if there is one. Only shown when it is not
                   already doing duty as the title above. */}

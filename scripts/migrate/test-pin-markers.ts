@@ -96,12 +96,6 @@ console.log('\n2. Marker imagery');
 // --- 3. The locket card ------------------------------------------------------
 console.log('\n3. Locket detail card');
 
-// The identity block is the person, not the place: the place is the cover
-// above it. A 64px crop of the cover photo sitting directly under the cover
-// was the same image three times over, counting its grid tile.
-mapView.includes('<Avatar user={openPin.creator} size="xl" />')
-  ? ok('the identity block shows the creator', 'the photo is the cover now')
-  : bad('the identity block shows the creator');
 
 /placeName \?\? `\$\{openPin\.latitude\.toFixed\(4\)\}/.test(mapView)
   ? ok('place name, falling back to coordinates')
@@ -169,45 +163,53 @@ mapView.includes('sm:-mx-6')
   ? ok('it clears the wider desktop padding too')
   : bad('it clears the wider desktop padding too');
 
-// A pin with only a song has no cover to overlap, and the avatar must not be
-// pulled up into the title bar.
-mapView.includes("cover && '-mt-8'")
-  ? ok('the overlap is conditional on there being a cover')
-  : bad('the overlap is conditional on there being a cover');
+// The avatar was briefly 64px and straddling the cover — the shape of a
+// profile page, where there is one person and the header is theirs. A space
+// is shared, so who dropped a pin is a supporting detail. Everything the
+// overlap needed went with it: the conditional -mt-8, the wrapper that kept
+// space-y from outranking it, and the position:relative that stopped the
+// cover painting over the avatar.
+!mapView.includes("cover && '-mt-8'")
+  ? ok('the avatar no longer overlaps the cover')
+  : bad('the avatar no longer overlaps the cover');
 
-// The cover is position:relative, and positioned boxes paint after in-flow
-// ones whatever the DOM order — a static identity row would hide the
-// overlapping half of the avatar behind the cover image.
-mapView.includes("relative flex items-end gap-3")
-  ? ok('the identity row is positioned too', 'or the avatar would paint behind the cover')
-  : bad('the identity row is positioned too');
-
-// space-y-4 on the body sets margin-top via `> * + *`, two classes of
-// specificity, which outranks -mt-8 and cancels the overlap silently. The
-// nesting is what makes the negative margin work, so it is worth asserting.
 {
-  const bodyIdx = mapView.indexOf('space-y-4 pb-8');
-  const wrapIdx = mapView.indexOf('const cover =');
-  const overlapIdx = mapView.indexOf("cover && '-mt-8'");
-  const between = mapView.slice(bodyIdx, overlapIdx);
-  wrapIdx > bodyIdx && between.split('<div>').length > 1
-    ? ok('cover and identity share one body child', 'so space-y cannot outrank the overlap')
-    : bad('cover and identity share one body child');
+  const body = mapView.slice(mapView.indexOf('<ModalBody'), mapView.indexOf('</ModalBody>'));
+
+  body.includes('<Avatar user={openPin.creator} size="sm" />')
+    ? ok('it is back to 32px', 'inline on the attribution line')
+    : bad('it is back to 32px');
+
+  !body.includes('size="xl"')
+    ? ok('the 64px treatment is gone')
+    : bad('the 64px treatment is gone');
+
+  // Two pictures of one person in a card is not attribution, it is repetition.
+  (body.match(/<Avatar /g) || []).length === 1
+    ? ok('exactly one avatar in the card')
+    : bad('exactly one avatar in the card', `${(body.match(/<Avatar /g) || []).length}`);
+
+  // The place name is the subject; the person is the footnote. Source order
+  // is the check: the heading has to come before the avatar.
+  const nameIdx = body.indexOf('id="pin-detail"');
+  const avatarIdx = body.indexOf('<Avatar ');
+  nameIdx !== -1 && nameIdx < avatarIdx
+    ? ok('the place name leads the block', 'avatar and attribution sit under it')
+    : bad('the place name leads the block', `name ${nameIdx}, avatar ${avatarIdx}`);
+
+  // The heading is 20px against 12px attribution text; if those ever level
+  // out the block has lost its subject.
+  body.includes('text-xl font-bold leading-tight') && body.includes('flex-1 truncate text-xs text-muted')
+    ? ok('the name outweighs the attribution', 'text-xl against text-xs')
+    : bad('the name outweighs the attribution');
 }
 
-mapView.includes('rounded-full ring-4 ring-surface')
-  ? ok('the avatar is ringed in the modal colour', 'it cuts a hole rather than sitting flat')
-  : bad('the avatar is ringed in the modal colour');
-
-// The space colour is what ties this pin to its marker on the map.
-mapView.includes("style={{ borderColor: colorOf.get(openPin.spaceId) }}")
+// The space colour is the only thing tying this card to its marker on the
+// map, so it survives the shrink — 2px on a 32px avatar.
+mapView.includes('style={{ borderColor: colorOf.get(openPin.spaceId) }}')
   ? ok('the space colour survives on the avatar')
   : bad('the space colour survives on the avatar');
 
-// One avatar, not two. The big one replaced the small one in the row below.
-!mapView.includes('<Avatar user={openPin.creator} size="sm" />')
-  ? ok('the attribution row lost its duplicate avatar', 'the name still links to the profile')
-  : bad('the attribution row lost its duplicate avatar');
 
 // (The thumbnails used to be object-contain. They crop now — see the square
 // cell assertions below, and the lightbox check that keeps the original whole.)
