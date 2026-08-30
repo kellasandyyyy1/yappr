@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import YouTube, { YouTubeProps } from 'react-youtube';
-import { Search, X, Music, Check, Loader2, Clock, History, Play, Square, AlertCircle, RefreshCw } from 'lucide-react';
+import { Search, X, Music, Check, Loader2, Clock, History, Play, Square, AlertCircle, RefreshCw } from './icons';
 import { motion, AnimatePresence } from 'motion/react';
 import { ThemeSong, MusicHistory } from '../types';
 import { auth as authApi, songs as songsApi } from '../lib/db';

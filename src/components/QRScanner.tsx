@@ -1,7 +1,7 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { Html5Qrcode, Html5QrcodeSupportedFormats } from 'html5-qrcode';
 import { motion, AnimatePresence } from 'motion/react';
-import { X, Camera, Zap, RefreshCw, AlertCircle, Loader2, Image as ImageIcon } from 'lucide-react';
+import { X, Camera, Zap, RefreshCw, AlertCircle, Loader2, Image as ImageIcon } from './icons';
 
 interface QRScannerProps {
   onScan: (data: string) => void;

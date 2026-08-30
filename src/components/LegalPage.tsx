@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useMemo } from 'react';
-import { ArrowLeft, FileText, ListTree, AlertTriangle } from 'lucide-react';
+import { ArrowLeft, FileText, ListTree, AlertTriangle } from './icons';
 import { parseMarkdown, type ParsedMarkdown } from '../lib/markdown';
 import { fetchLegalDocument, fetchLegalManifest, formatLegalDate } from '../lib/legal';
 import { navigate, goBack } from '../lib/router';

@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { users as usersApi, chats as chatsApi } from '../lib/db';
 import { uploadFile } from '../lib/supabase';
 import { User } from '../types';
-import { X, Search, Users, Check, Camera, Loader2 } from 'lucide-react';
+import { X, Search, Users, Check, Camera, Loader2 } from './icons';
 import { cn } from '../lib/utils';
 import { RowSkeleton } from './Skeleton';
 import { Avatar } from './Avatar';

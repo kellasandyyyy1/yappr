@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { posts as postsApi } from '../lib/db';
 import { Post } from '../types';
-import { MessageSquare, Heart, Volume2 } from 'lucide-react';
+import { MessageSquare, Heart, Volume2 } from './icons';
 import { cn } from '../lib/utils';
 import { Avatar } from './Avatar';
 

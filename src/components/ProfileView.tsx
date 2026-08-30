@@ -9,7 +9,7 @@ import {
 import { uploadFile, UploadError } from '../lib/supabase';
 import { User, Post } from '../types';
 import { motion, AnimatePresence } from 'motion/react';
-import { LogOut, Grid, List, Layers, AtSign, X, Trash2, Camera, User as UserIcon, AlignLeft, Loader2, ChevronLeft, ChevronRight, Heart, MessageCircle, QrCode, Download, Music, Plus } from 'lucide-react';
+import { LogOut, Grid, List, Layers, AtSign, X, Trash2, Camera, User as UserIcon, AlignLeft, Loader2, ChevronLeft, ChevronRight, Heart, MessageCircle, QrCode, Download, Music, Plus } from './icons';
 import { cn, formatTimeAgo } from '../lib/utils';
 import { UsersListModal } from './UsersListModal';
 import { Avatar } from './Avatar';

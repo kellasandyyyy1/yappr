@@ -2,7 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { users as usersApi, follows as followsApi } from '../lib/db';
 import { User } from '../types';
 import { motion, AnimatePresence } from 'motion/react';
-import { X, User as UserIcon, Check, Loader2, AtSign } from 'lucide-react';
+import { X, User as UserIcon, Check, Loader2, AtSign } from './icons';
 import { cn } from '../lib/utils';
 import { StatusIndicator } from './StatusIndicator';
 

@@ -1,6 +1,6 @@
 import React, { useState, useRef, useEffect } from 'react';
 import YouTube, { YouTubeProps } from 'react-youtube';
-import { Play, Pause, Music, Volume2, VolumeX, Loader2, AlertCircle } from 'lucide-react';
+import { Play, Pause, Music, Volume2, VolumeX, Loader2, AlertCircle } from './icons';
 import { motion } from 'motion/react';
 import { ThemeSong } from '../types';
 import { cn } from '../lib/utils';

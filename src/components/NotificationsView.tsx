@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { notifications as notificationsApi } from '../lib/db';
 import { User, Notification } from '../types';
-import { Heart, MessageCircle, UserPlus, CheckCircle2, Bell, ChevronLeft, Smile, AtSign } from 'lucide-react';
+import { Heart, MessageCircle, UserPlus, CheckCircle2, Bell, ChevronLeft, Smile, AtSign } from './icons';
 import { formatTimeAgo, cn } from '../lib/utils';
 import { Avatar } from './Avatar';
 import { NotificationSkeleton } from './Skeleton';

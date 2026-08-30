@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Search, X, Loader2, AlertCircle, ImageOff } from 'lucide-react';
+import { Search, X, Loader2, AlertCircle, ImageOff } from './icons';
 import { Modal, ModalHeader } from './Modal';
 import { searchGifs, GifSearchError, Gif } from '../lib/giphy';
 import { cn } from '../lib/utils';

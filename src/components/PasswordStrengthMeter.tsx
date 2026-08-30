@@ -1,5 +1,5 @@
 import React from 'react';
-import { Check, AlertCircle } from 'lucide-react';
+import { Check, AlertCircle } from './icons';
 import { cn } from '../lib/utils';
 import type { PasswordCheck } from '../lib/passwordPolicy';
 

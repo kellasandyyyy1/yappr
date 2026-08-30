@@ -11,7 +11,7 @@ import {
 import { uploadFile, UploadError } from '../lib/supabase';
 import { User, Comment, Post } from '../types';
 import { motion, AnimatePresence } from 'motion/react';
-import { X, Send, MessageSquare, Mic, Image as ImageIcon, Loader2, Play, Pause, Square, Volume2, Trash2, AtSign, Heart, Grid, CornerDownRight } from 'lucide-react';
+import { X, Send, MessageSquare, Mic, Image as ImageIcon, Loader2, Play, Pause, Square, Volume2, Trash2, AtSign, Heart, Grid, CornerDownRight } from './icons';
 import { cn, formatTimeAgo, describeError } from '../lib/utils';
 import { ImageViewer } from './ImageViewer';
 import { VoiceMessage } from './VoiceMessage';

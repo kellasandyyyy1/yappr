@@ -1,5 +1,5 @@
 import React from 'react';
-import { AlertTriangle, X } from 'lucide-react';
+import { AlertTriangle, X } from './icons';
 import type { AuthDiagnostics } from '../lib/authErrors';
 
 /**

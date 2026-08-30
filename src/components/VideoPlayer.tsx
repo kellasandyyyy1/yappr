@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect, useCallback } from 'react';
-import { Play, Pause, Volume2, VolumeX, Maximize, Loader2, AlertCircle } from 'lucide-react';
+import { Play, Pause, Volume2, VolumeX, Maximize, Loader2, AlertCircle } from './icons';
 import { cn } from '../lib/utils';
 import { formatDuration } from '../lib/video';
 import { resolveStorageUrl } from '../lib/supabase';

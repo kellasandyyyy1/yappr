@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { MapPin as MapPinIcon, Image as ImageIcon, Video as VideoIcon, Music, X, Loader2 } from 'lucide-react';
+import { MapPin as MapPinIcon, Image as ImageIcon, Video as VideoIcon, Music, X, Loader2 } from './icons';
 import { Modal, ModalHeader, ModalBody, ModalFooter } from './Modal';
 import { PinMap, useCurrentLocation } from './PinMap';
 import { LocationSearch } from './LocationSearch';

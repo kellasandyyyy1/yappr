@@ -9,7 +9,7 @@ import {
 import { uploadFile, uploadFileWithProgress, UploadError } from '../lib/supabase';
 import { User, ThemeSong, PostVisibility } from '../types';
 import { motion, AnimatePresence } from 'motion/react';
-import { X, Image as ImageIcon, Loader2, Mic, Square, Trash2, AtSign, Music, Globe, Users as UsersIcon, Lock, Check, ChevronDown, Film, Video as VideoIcon, AlertCircle } from 'lucide-react';
+import { X, Image as ImageIcon, Loader2, Mic, Square, Trash2, AtSign, Music, Globe, Users as UsersIcon, Lock, Check, ChevronDown, Film, Video as VideoIcon, AlertCircle } from './icons';
 import { cn } from '../lib/utils';
 import { sendPushNotification } from '../lib/sendPush';
 import { VoiceMessage } from './VoiceMessage';

@@ -36,6 +36,7 @@
   "dependencies": {
     "@google/genai": "^1.29.0",
     "@supabase/supabase-js": "^2.112.3",
+    "@tabler/icons-react": "^3.46.0",
     "@tailwindcss/vite": "^4.1.14",
     "@types/leaflet": "^1.9.22",
     "@vitejs/plugin-react": "^5.0.4",
@@ -48,7 +49,6 @@
     "html-to-image": "^1.11.13",
     "html5-qrcode": "^2.3.8",
     "leaflet": "^1.9.4",
-    "lucide-react": "^0.546.0",
     "motion": "^12.23.24",
     "qrcode.react": "^4.2.0",
     "react": "^19.0.0",

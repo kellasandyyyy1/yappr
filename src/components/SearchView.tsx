@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { users as usersApi, follows as followsApi } from '../lib/db';
 import { User } from '../types';
-import { Search as SearchIcon, Loader2, Clock, X, QrCode, Sparkles } from 'lucide-react';
+import { Search as SearchIcon, Loader2, Clock, X, QrCode, Sparkles } from './icons';
 import { cn } from '../lib/utils';
 import { Avatar } from './Avatar';
 import { RowSkeleton } from './Skeleton';

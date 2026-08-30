@@ -1,5 +1,5 @@
 import React, { useEffect, useState, useCallback, useMemo } from 'react';
-import { Plus, Loader2, AlertCircle, Trash2, Users as UsersIcon, MapPin as MapPinIcon } from 'lucide-react';
+import { Plus, Loader2, AlertCircle, Trash2, Users as UsersIcon, MapPin as MapPinIcon } from './icons';
 import { PinMap, useCurrentLocation, spaceColor } from './PinMap';
 import { CreatePinModal } from './CreatePinModal';
 import { CreateSpaceModal } from './CreateSpaceModal';

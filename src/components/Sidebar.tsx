@@ -1,5 +1,5 @@
 import React from 'react';
-import { Home, MessageCircle, Bell, User as UserIcon, Search, PenSquare, MapPin } from 'lucide-react';
+import { Home, MessageCircle, Bell, User as UserIcon, Search, PenSquare, MapPin } from './icons';
 import { View, User } from '../types';
 import { cn } from '../lib/utils';
 import { Avatar } from './Avatar';

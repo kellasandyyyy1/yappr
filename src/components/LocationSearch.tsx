@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
-import { Search, X, Loader2, AlertCircle, MapPin as MapPinIcon, Clock } from 'lucide-react';
+import { Search, X, Loader2, AlertCircle, MapPin as MapPinIcon, Clock } from './icons';
 import {
   searchPlaces,
   searchHistory,

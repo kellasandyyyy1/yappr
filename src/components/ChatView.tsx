@@ -9,7 +9,7 @@ import {
 } from '../lib/db';
 import { User, Message, Chat } from '../types';
 import { motion, AnimatePresence } from 'motion/react';
-import { Send, ChevronLeft, Search, Plus, X, UserPlus, Trash2, MessageSquare, Mic, Image as ImageIcon, Loader2, Play, Pause, Square, Volume2, Check, CheckCheck, Clock, Reply, AtSign, Users, MoreVertical, LogOut, Settings as SettingsIcon, Camera, Eye, EyeOff, Film, Video as VideoIcon } from 'lucide-react';
+import { Send, ChevronLeft, Search, Plus, X, UserPlus, Trash2, MessageSquare, Mic, Image as ImageIcon, Loader2, Play, Pause, Square, Volume2, Check, CheckCheck, Clock, Reply, AtSign, Users, MoreVertical, LogOut, Settings as SettingsIcon, Camera, Eye, EyeOff, Film, Video as VideoIcon } from './icons';
 import { ImageViewer } from './ImageViewer';
 import { VoiceMessage } from './VoiceMessage';
 import { EmojiReactions, EmojiPickerButton } from './EmojiReactions';

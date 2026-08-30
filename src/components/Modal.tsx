@@ -1,7 +1,7 @@
 import React, { useEffect, useId } from 'react';
 import { createPortal } from 'react-dom';
 import { motion } from 'motion/react';
-import { X, Loader2 } from 'lucide-react';
+import { X, Loader2 } from './icons';
 import { cn } from '../lib/utils';
 
 /**

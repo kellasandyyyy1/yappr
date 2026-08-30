@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { follows as followsApi } from '../lib/db';
 import { User } from '../types';
 import { motion, AnimatePresence } from 'motion/react';
-import { Users } from 'lucide-react';
+import { Users } from './icons';
 import { Modal, ModalHeader, ModalBody } from './Modal';
 import { Avatar } from './Avatar';
 import { RowSkeleton } from './Skeleton';

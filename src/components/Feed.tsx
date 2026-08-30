@@ -10,7 +10,7 @@ import {
 import { supabase } from '../lib/supabase';
 import { User, Post, ThemeSong } from '../types';
 import { motion, AnimatePresence } from 'motion/react';
-import { Heart, MessageCircle, Share2, Plus, X, Image as ImageIcon, Edit3, Trash2, History, AtSign } from 'lucide-react';
+import { Heart, MessageCircle, Share2, Plus, X, Image as ImageIcon, Edit3, Trash2, History, AtSign } from './icons';
 import { cn, formatTimeAgo } from '../lib/utils';
 import { ImageViewer } from './ImageViewer';
 import { VoiceMessage } from './VoiceMessage';

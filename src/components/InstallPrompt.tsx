@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { Download, X, Share, RefreshCw } from 'lucide-react';
+import { Download, X, Share, RefreshCw } from './icons';
 import {
   initInstallPrompt,
   onInstallAvailabilityChange,

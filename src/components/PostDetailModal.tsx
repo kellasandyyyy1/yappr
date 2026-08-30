@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { X, Heart, MessageSquare, Share2 } from 'lucide-react';
+import { X, Heart, MessageSquare, Share2 } from './icons';
 import { Modal } from './Modal';
 import { User, Post } from '../types';
 import { posts as postsApi, likes as likesApi } from '../lib/db';

@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Search, Check, Loader2, Users as UsersIcon } from 'lucide-react';
+import { Search, Check, Loader2, Users as UsersIcon } from './icons';
 import { Modal, ModalHeader, ModalBody, ModalFooter } from './Modal';
 import { Avatar } from './Avatar';
 import { useToast } from './ToastContext';

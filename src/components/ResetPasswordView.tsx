@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { Lock, Mail, Eye, EyeOff, Loader2, ShieldCheck, AlertTriangle } from 'lucide-react';
+import { Lock, Mail, Eye, EyeOff, Loader2, ShieldCheck, AlertTriangle } from './icons';
 import { supabase } from '../lib/supabase';
 import { completePasswordSetup, requestMigrationReset } from '../lib/auth-migration';
 import {

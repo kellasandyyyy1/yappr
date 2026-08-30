@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Download, Send, Search, Loader2, Check, Users } from 'lucide-react';
+import { Download, Send, Search, Loader2, Check, Users } from './icons';
 import { Avatar } from './Avatar';
 import { Modal, ModalHeader, ModalBody, ModalFooter } from './Modal';
 import { User, Post, Chat } from '../types';

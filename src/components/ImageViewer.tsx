@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
-import { X, ZoomIn, ZoomOut, Download, RotateCw } from 'lucide-react';
+import { X, ZoomIn, ZoomOut, Download, RotateCw } from './icons';
 import { cn } from '../lib/utils';
 
 interface ImageViewerProps {

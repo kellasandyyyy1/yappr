@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { FileText, Loader2, AlertTriangle } from 'lucide-react';
+import { FileText, Loader2, AlertTriangle } from './icons';
 import { Modal, ModalBody, ModalFooter } from './Modal';
 import { recordConsent, formatLegalDate } from '../lib/legal';
 import { navigate } from '../lib/router';

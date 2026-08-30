@@ -1,5 +1,5 @@
 import React from 'react';
-import { PenSquare } from 'lucide-react';
+import { PenSquare } from './icons';
 import { View } from '../types';
 import { cn } from '../lib/utils';
 import { NAV_ITEMS } from './Sidebar';

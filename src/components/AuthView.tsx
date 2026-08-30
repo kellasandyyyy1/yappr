@@ -2,7 +2,7 @@ import React, { useState, useEffect, useCallback } from 'react';
 import { auth as authApi, users as usersApi } from '../lib/db';
 import { requestMigrationReset } from '../lib/auth-migration';
 import { useToast } from './ToastContext';
-import { Mail, Lock, User as UserIcon, Eye, EyeOff, Loader2, ShieldCheck, ShieldAlert, KeyRound, X } from 'lucide-react';
+import { Mail, Lock, User as UserIcon, Eye, EyeOff, Loader2, ShieldCheck, ShieldAlert, KeyRound, X } from './icons';
 import { parseEmail } from '../lib/emailValidation';
 import {
   checkPasswordStrength,
@@ -296,7 +296,7 @@ export function AuthView({ onAuthSuccess, notice, onDismissNotice }: AuthViewPro
     <div className="flex min-h-[100dvh] flex-col items-center justify-center px-5 py-8">
       <div className="w-full max-w-[420px]">
         {/* Compact header — a mark, a name, one line of context. Previously a
-            generic lucide chat glyph; now the actual brand icon. */}
+            generic chat glyph from the icon set; now the actual brand icon. */}
         <header className="mb-8 text-center">
           <h1 className="flex flex-col items-center gap-3">
             <Logo size="lg" iconOnly />

@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
-import { Plus, Smile } from 'lucide-react';
+import { Plus, Smile } from './icons';
 import { cn } from '../lib/utils';
 
 interface EmojiReactionsProps {
