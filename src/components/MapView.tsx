@@ -14,6 +14,7 @@ import { pins as pinsApi, spaces as spacesApi, Pin, PinMedia, MapSpace } from '.
 import { formatTimeAgo, describeError, cn } from '../lib/utils';
 import { reverseGeocode } from '../lib/geocode';
 import { lookupSongTitle } from '../lib/youtube';
+import { AvatarStack } from './AvatarStack';
 import { AnimatePresence } from 'motion/react';
 import type { User } from '../types';
 
@@ -45,6 +46,8 @@ export function MapView({ user, onUserClick }: MapViewProps) {
   const [openPin, setOpenPin] = useState<Pin | null>(null);
   const [resolved, setResolved] = useState<PinMedia[] | null>(null);
   const [viewingImage, setViewingImage] = useState<string | null>(null);
+  // The space whose member list is open, from tapping the avatar stack.
+  const [viewingMembers, setViewingMembers] = useState<MapSpace | null>(null);
   const [confirmDelete, setConfirmDelete] = useState<string | null>(null);
   // Set when a place is chosen from search, so the map pans there.
   const [searchCenter, setSearchCenter] = useState<[number, number] | null>(null);
@@ -258,7 +261,7 @@ export function MapView({ user, onUserClick }: MapViewProps) {
             <button
               key={s.id}
               onClick={() => setActiveSpaceId(s.id === activeSpaceId ? null : s.id)}
-              title={`${s.name} — ${pinsPerSpace.get(s.id) ?? 0} pin(s), ${s.members.length} member(s)`}
+              title={`${s.name} — ${pinsPerSpace.get(s.id) ?? 0} pin(s)`}
               className={cn(
                 'flex h-8 shrink-0 items-center gap-1.5 rounded-full border px-3 text-xs font-medium transition-colors',
                 s.id === activeSpaceId ? 'border-accent bg-accent/15 text-fg' : 'border-line text-muted hover:text-fg'
@@ -425,27 +428,38 @@ export function MapView({ user, onUserClick }: MapViewProps) {
                 </p>
 
                 <div className="mt-2.5 flex items-center gap-2.5">
+                  {/* The stack is the SPACE — everyone who can see this pin —
+                      while the text beside it stays about this one pin and who
+                      dropped it. Two different subjects sharing a row, which is
+                      why the stack is not labelled "members": the sentence next
+                      to it would contradict the label.
+
+                      The space colour that used to ring this avatar is gone.
+                      Per-face colour on a stack reads as five different things
+                      rather than one; the colour still marks the space on its
+                      filter chip and on every marker. */}
                   <button
                     type="button"
-                    onClick={() => onUserClick?.(openPin.creatorId)}
+                    onClick={() => setViewingMembers(spaceOf(openPin.spaceId))}
                     className="press shrink-0"
-                    aria-label="Open profile"
+                    aria-label={`Members of ${spaceOf(openPin.spaceId)?.name ?? "this space"}`}
                   >
-                    {/* The space colour stays, at 2px on a 32px avatar: it is
-                        what ties this pin to its marker on the map, and losing
-                        it would leave nothing in the card connecting the two. */}
-                    <span
-                      className="block rounded-full border-2"
-                      style={{ borderColor: colorOf.get(openPin.spaceId) }}
-                    >
-                      <Avatar user={openPin.creator} size="sm" />
-                    </span>
+                    <AvatarStack
+                      users={(spaceOf(openPin.spaceId)?.members ?? []).map((m) => m.user)}
+                      size="sm"
+                    />
                   </button>
 
                   <p className="min-w-0 flex-1 truncate text-xs text-muted">
-                    <span className="font-semibold text-fg">
+                    {/* The avatar was the way to this profile; now the stack
+                        belongs to the space, so the name carries the link. */}
+                    <button
+                      type="button"
+                      onClick={() => onUserClick?.(openPin.creatorId)}
+                      className="press font-semibold text-fg"
+                    >
                       {openPin.creatorId === user.uid ? 'You' : openPin.creator?.displayName ?? 'Someone'}
-                    </span>
+                    </button>
                     {' · '}added {formatTimeAgo(openPin.createdAt)}
                   </p>
 
@@ -583,6 +597,38 @@ export function MapView({ user, onUserClick }: MapViewProps) {
                 aria-hidden="true"
                 className="pointer-events-none sticky bottom-0 -mt-8 h-8 bg-gradient-to-t from-surface to-transparent"
               />
+            </ModalBody>
+          </Modal>
+        )}
+      </AnimatePresence>
+
+      {/* Names, nothing else. This is the answer to "who else sees this?",
+          and a list of roles and join dates would bury it. Nested, because it
+          opens over the pin detail rather than replacing it. */}
+      <AnimatePresence>
+        {viewingMembers && (
+          <Modal onClose={() => setViewingMembers(null)} size="sm" nested>
+            <ModalHeader title={viewingMembers.name} onClose={() => setViewingMembers(null)} />
+            <ModalBody className="scrollbar-thin">
+              <ul className="space-y-1">
+                {viewingMembers.members.map((m) => (
+                  <li key={m.userId}>
+                    <button
+                      type="button"
+                      onClick={() => { setViewingMembers(null); onUserClick?.(m.userId); }}
+                      className="press flex w-full items-center gap-2.5 rounded-xl px-1 py-1.5 text-left hover:bg-white/[0.03]"
+                    >
+                      <Avatar user={m.user} size="sm" />
+                      <span className="min-w-0 flex-1 truncate text-sm text-fg">
+                        {m.userId === user.uid ? 'You' : m.user?.displayName ?? m.user?.username ?? 'Someone'}
+                      </span>
+                      {m.role === 'owner' && (
+                        <span className="shrink-0 text-[11px] text-subtle">owner</span>
+                      )}
+                    </button>
+                  </li>
+                ))}
+              </ul>
             </ModalBody>
           </Modal>
         )}

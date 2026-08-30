@@ -176,39 +176,93 @@ mapView.includes('sm:-mx-6')
 {
   const body = mapView.slice(mapView.indexOf('<ModalBody'), mapView.indexOf('</ModalBody>'));
 
-  body.includes('<Avatar user={openPin.creator} size="sm" />')
-    ? ok('it is back to 32px', 'inline on the attribution line')
-    : bad('it is back to 32px');
+  // The row carries two different subjects: the stack is the space, the
+  // sentence is this one pin. That is why the stack has no "members" label —
+  // the text beside it would contradict it.
+  body.includes('<AvatarStack')
+    ? ok('the attribution row shows a member stack')
+    : bad('the attribution row shows a member stack');
 
-  !body.includes('size="xl"')
-    ? ok('the 64px treatment is gone')
-    : bad('the 64px treatment is gone');
+  body.includes('spaceOf(openPin.spaceId)?.members ?? []')
+    ? ok('the stack is the space, not the pin', 'everyone who can see it')
+    : bad('the stack is the space, not the pin');
 
-  // Two pictures of one person in a card is not attribution, it is repetition.
-  (body.match(/<Avatar /g) || []).length === 1
-    ? ok('exactly one avatar in the card')
-    : bad('exactly one avatar in the card', `${(body.match(/<Avatar /g) || []).length}`);
+  // The creator is still named, and still reachable — the avatar used to be
+  // the link to their profile, so the name had to take that over.
+  body.includes('added {formatTimeAgo(openPin.createdAt)}')
+    ? ok('the text stays specific to this pin', 'name · added Xs ago')
+    : bad('the text stays specific to this pin');
 
-  // The place name is the subject; the person is the footnote. Source order
-  // is the check: the heading has to come before the avatar.
+  body.includes('onClick={() => onUserClick?.(openPin.creatorId)}')
+    ? ok('the creator name links to their profile')
+    : bad('the creator name links to their profile', 'the avatar carried this before');
+
+  body.includes('onClick={() => setViewingMembers(')
+    ? ok('tapping the stack opens the member list')
+    : bad('tapping the stack opens the member list');
+
+  // One stack, not a stack plus the old single avatar.
+  !body.includes('<Avatar user={openPin.creator}')
+    ? ok('the single creator avatar is gone', 'replaced, not added to')
+    : bad('the single creator avatar is gone');
+
+  // The place name is still the subject of the block.
   const nameIdx = body.indexOf('id="pin-detail"');
-  const avatarIdx = body.indexOf('<Avatar ');
-  nameIdx !== -1 && nameIdx < avatarIdx
-    ? ok('the place name leads the block', 'avatar and attribution sit under it')
-    : bad('the place name leads the block', `name ${nameIdx}, avatar ${avatarIdx}`);
-
-  // The heading is 20px against 12px attribution text; if those ever level
-  // out the block has lost its subject.
-  body.includes('text-xl font-bold leading-tight') && body.includes('flex-1 truncate text-xs text-muted')
-    ? ok('the name outweighs the attribution', 'text-xl against text-xs')
-    : bad('the name outweighs the attribution');
+  const stackIdx = body.indexOf('<AvatarStack');
+  nameIdx !== -1 && nameIdx < stackIdx
+    ? ok('the place name still leads the block')
+    : bad('the place name still leads the block');
 }
 
-// The space colour is the only thing tying this card to its marker on the
-// map, so it survives the shrink — 2px on a 32px avatar.
-mapView.includes('style={{ borderColor: colorOf.get(openPin.spaceId) }}')
-  ? ok('the space colour survives on the avatar')
-  : bad('the space colour survives on the avatar');
+// The member list is names, not roles and join dates — it answers "who else
+// sees this?" and nothing more.
+mapView.includes('{viewingMembers && (')
+  ? ok('a member list exists', 'there was none before this')
+  : bad('a member list exists');
+
+mapView.includes('nested') && mapView.includes('setViewingMembers(null)')
+  ? ok('it opens over the pin detail', 'nested, so the card stays behind it')
+  : bad('it opens over the pin detail');
+
+// The chip tooltip carried the member count only because the chip DIGIT used
+// to be one. The stack shows members now, so the tooltip describes its digit.
+!mapView.includes('member(s)')
+  ? ok('the member count is not duplicated on the chip')
+  : bad('the member count is not duplicated on the chip');
+
+// --- The stack component itself ---------------------------------------------
+{
+  const stack = fs.readFileSync('src/components/AvatarStack.tsx', 'utf8').replace(/\r\n/g, '\n');
+
+  stack.includes('flex -space-x-2')
+    ? ok('avatars overlap', 'the -space-x-2 idiom the feed already uses')
+    : bad('avatars overlap');
+
+  stack.includes('ring-2 ring-surface')
+    ? ok('each face is ringed in the surface colour', 'a border would darken the overlap')
+    : bad('each face is ringed in the surface colour');
+
+  stack.includes('+{extra}')
+    ? ok('the overflow bubble counts the rest')
+    : bad('the overflow bubble counts the rest');
+
+  // members[].user is optional — the embed can come back without it, and a
+  // stack of empty circles is worse than a shorter stack.
+  stack.includes('users.filter(Boolean)')
+    ? ok('missing users are dropped, not rendered blank')
+    : bad('missing users are dropped, not rendered blank');
+
+  // A space with no loaded members would otherwise render an empty button
+  // that still opens a list, which is a tap target with nothing in it.
+  stack.includes('if (present.length === 0) return null;')
+    ? ok('an empty stack renders nothing at all')
+    : bad('an empty stack renders nothing at all');
+
+  // Presentational: the feed opens each liker, the pin detail opens one list.
+  !stack.includes('onClick')
+    ? ok('the component owns no click behaviour', 'its two callers want different taps')
+    : bad('the component owns no click behaviour');
+}
 
 
 // (The thumbnails used to be object-contain. They crop now — see the square

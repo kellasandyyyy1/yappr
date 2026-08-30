@@ -183,11 +183,17 @@ view.includes('pinsPerSpace.get(s.id) ?? 0')
   ? ok('no separate count query', 'one fetch, two readings of it')
   : bad('no separate count query');
 
-// The member count was the only thing that number ever meant, so it stays
-// somewhere rather than being silently dropped.
-view.includes('member(s)')
-  ? ok('the member count survives in the label')
-  : bad('the member count survives in the label');
+// The member count briefly lived in this tooltip, because the chip's digit
+// used to be one. The pin detail shows the members themselves now — as faces,
+// in the attribution row — so the tooltip went back to describing its own
+// digit. Members are not lost, they moved somewhere better.
+!view.includes('member(s)')
+  ? ok('the chip tooltip describes its own digit', 'members are shown as faces in the pin detail')
+  : bad('the chip tooltip describes its own digit', 'it still mentions members');
+
+view.includes('<AvatarStack')
+  ? ok('and the members are shown where they mean something')
+  : bad('and the members are shown where they mean something');
 
 // visiblePins is (pins ?? []), so a null pins reads as zero. Gating the
 // text on `spaces` alone stated "0 pins in X" while pins were in flight.
