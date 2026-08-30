@@ -198,6 +198,9 @@ const bad = (l: string, d = '') => { console.log(`  FAIL  ${l}${d ? ` — ${d}` 
       .from('map_space_members').delete().eq('space_id', space.id).eq('user_id', bob.id);
     leaveErr ? bad('bob can leave voluntarily', leaveErr.message) : ok('bob can leave voluntarily');
 
+    // The pin he can no longer see includes his OWN. 0017 granted permanent
+    // read access on authorship, which outlived membership; 0019 removed it,
+    // because membership is the whole visibility model or it is not the model.
     const afterLeave = await pinsFor(bob);
     afterLeave.length === 0
       ? ok('once out, bob sees nothing in it', 'including the pin he added')
