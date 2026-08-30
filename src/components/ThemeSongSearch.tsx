@@ -1,10 +1,11 @@
 import React, { useState, useEffect, useRef } from 'react';
 import YouTube, { YouTubeProps } from 'react-youtube';
-import { Search, X, Music, Check, Loader2, Link as LinkIcon, Clock, History, Play, Square } from 'lucide-react';
+import { Search, X, Music, Check, Loader2, Clock, History, Play, Square, AlertCircle } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { ThemeSong, MusicHistory } from '../types';
 import { auth as authApi, songs as songsApi } from '../lib/db';
 import { cn } from '../lib/utils';
+import { searchSongs, SongSearchError, MIN_QUERY_LENGTH, YouTubeTrack } from '../lib/youtube';
 import { RowSkeleton } from './Skeleton';
 
 interface ThemeSongSearchProps {
@@ -14,7 +15,8 @@ interface ThemeSongSearchProps {
 }
 
 export function ThemeSongSearch({ onSelect, onClose, initialSong }: ThemeSongSearchProps) {
-  const [url, setUrl] = useState('');
+  const [query, setQuery] = useState('');
+  const [results, setResults] = useState<YouTubeTrack[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [preview, setPreview] = useState<ThemeSong | null>(initialSong || null);
@@ -85,53 +87,62 @@ export function ThemeSongSearch({ onSelect, onClose, initialSong }: ThemeSongSea
     }
   };
 
-  const extractYoutubeId = (url: string) => {
-    const regExp = /^.*((youtu.be\/)|(v\/)|(\/u\/\w\/)|(embed\/)|(watch\?))\??v?=?([^#&?]*).*/;
-    const match = url.match(regExp);
-    return (match && match[7].length === 11) ? match[7] : null;
-  };
-
-  const handleUrlChange = (newUrl: string) => {
-    setUrl(newUrl);
-    const id = extractYoutubeId(newUrl);
-    if (id) {
-      setTempId(id);
-      setLoading(true);
-      setError('');
-    } else if (newUrl.trim() !== '') {
-      setError('Please enter a valid YouTube link');
-    }
-  };
-
-  const onPlayerReady: YouTubeProps['onReady'] = (event) => {
-    const player = event.target;
-    try {
-      const videoData = player.getVideoData();
-      if (videoData && videoData.title) {
-        setPreview({
-          youtubeId: tempId!,
-          title: videoData.title,
-          artist: videoData.author,
-          coverUrl: `https://img.youtube.com/vi/${tempId}/mqdefault.jpg`,
-          startTime: startTime
-        });
-        setError('');
-      } else {
-        setError('Could not fetch video details. Please try another link.');
-      }
-    } catch (err) {
-      console.error(err);
-      setError('Error fetching video details');
-    } finally {
+  /**
+   * Debounced search.
+   *
+   * 400ms, with a two-character floor, because every keystroke that reaches
+   * the server costs 100 units of a 10,000/day YouTube quota — roughly 100
+   * searches a day for the whole app. Typing 'the weeknd' unthrottled would
+   * be eleven of them.
+   *
+   * The AbortController is not an optimisation either: without it a slow
+   * request for 'ta' can land after a fast one for 'taylor' and overwrite the
+   * results the reader is looking at.
+   */
+  useEffect(() => {
+    const q = query.trim();
+    if (q.length < MIN_QUERY_LENGTH) {
+      setResults([]);
       setLoading(false);
-      setTempId(null);
+      setError('');
+      return;
     }
-  };
 
-  const onPlayerError: YouTubeProps['onError'] = () => {
-    setError('Video not found or unavailable');
-    setLoading(false);
-    setTempId(null);
+    const controller = new AbortController();
+    setLoading(true);
+
+    const timer = setTimeout(async () => {
+      try {
+        const tracks = await searchSongs(q, controller.signal);
+        if (controller.signal.aborted) return;
+        setResults(tracks);
+        setError(tracks.length === 0 ? 'No songs found. Try a different search.' : '');
+      } catch (err) {
+        if (controller.signal.aborted || (err as Error)?.name === 'AbortError') return;
+        // Quota exhausted, not configured, rate limited — each carries its own
+        // message from the endpoint, and showing it is the difference between
+        // 'no results' and 'this is broken'.
+        console.error('Song search failed:', err);
+        setResults([]);
+        setError(err instanceof SongSearchError ? err.message : 'Song search failed. Try again.');
+      } finally {
+        if (!controller.signal.aborted) setLoading(false);
+      }
+    }, 400);
+
+    return () => {
+      clearTimeout(timer);
+      controller.abort();
+    };
+  }, [query]);
+
+  /** Search already returns title, channel and thumbnail, so picking a result
+   *  needs no extra network call and no hidden metadata-probe player — which
+   *  is what the pasted-link flow used the now-deleted onPlayerReady for. */
+  const pickTrack = (track: YouTubeTrack) => {
+    setPreview({ ...track, startTime: 0 });
+    setStartTime(0);
+    setIsPreviewPlaying(false);
   };
 
   const handleSave = () => {
@@ -151,25 +162,6 @@ export function ThemeSongSearch({ onSelect, onClose, initialSong }: ThemeSongSea
   return (
     <div className="flex flex-col h-full">
       {/* Hidden Player for metadata */}
-      {tempId && (
-        <div className="absolute opacity-[0.01] pointer-events-none h-[200px] w-[200px] overflow-hidden -z-10 bg-transparent" style={{ top: -100, left: -100 }}>
-          <YouTube
-            videoId={tempId}
-            onReady={onPlayerReady}
-            onError={onPlayerError}
-            opts={{
-              height: '200',
-              width: '200',
-              playerVars: {
-                autoplay: 0,
-                origin: window.location.origin,
-                enablejsapi: 1,
-                playsinline: 1
-              }
-            }}
-          />
-        </div>
-      )}
 
       <div className="flex items-center justify-between mb-8 mt-2">
         <div className="flex items-center gap-4">
@@ -207,23 +199,62 @@ export function ThemeSongSearch({ onSelect, onClose, initialSong }: ThemeSongSea
         {activeTab === 'search' ? (
           <div className="space-y-6">
             <div className="space-y-3">
-              <label className="text-xs font-black uppercase tracking-widest text-muted ml-1 flex items-center gap-2">
-                <LinkIcon size={12} />
-                YouTube Link
-              </label>
               <div className="relative">
                 <input
                   autoFocus
-                  value={url}
-                  onChange={(e) => handleUrlChange(e.target.value)}
-                  placeholder="Paste YouTube link here..."
-                  className="w-full bg-surface-3 border border-line rounded-[20px] p-5 pl-12 text-sm focus:outline-none focus:border-accent transition-colors font-medium placeholder:text-subtle"
+                  value={query}
+                  onChange={(e) => setQuery(e.target.value)}
+                  placeholder="Search for a song or artist…"
+                  className="w-full rounded-2xl border border-line bg-surface-3 py-4 pl-12 pr-12 text-sm font-medium transition-colors placeholder:text-subtle focus:border-accent focus:outline-none"
                 />
-                <Search className="absolute left-5 top-1/2 -translate-y-1/2 text-subtle" size={18} />
-                {loading && <Loader2 className="absolute right-5 top-1/2 -translate-y-1/2 text-accent animate-spin" size={18} />}
+                <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-subtle" size={18} />
+                {loading && <Loader2 className="absolute right-4 top-1/2 -translate-y-1/2 animate-spin text-accent" size={18} />}
+                {!loading && query && (
+                  <button
+                    onClick={() => setQuery('')}
+                    aria-label="Clear search"
+                    className="absolute right-4 top-1/2 -translate-y-1/2 text-subtle transition-colors hover:text-fg"
+                  >
+                    <X size={16} />
+                  </button>
+                )}
               </div>
-              {error && <p className="text-xs text-danger font-bold ml-1">{error}</p>}
+
+              {error && (
+                <p className="ml-1 flex items-center gap-1.5 text-xs text-danger">
+                  <AlertCircle size={12} className="shrink-0" />
+                  {error}
+                </p>
+              )}
             </div>
+
+            {/* Results. Hidden once something is picked, so the preview and
+                start-time controls get the full panel; "Choose another" below
+                brings the list back. */}
+            {!preview && results.length > 0 && (
+              <ul className="space-y-1">
+                {results.map((track) => (
+                  <li key={track.youtubeId}>
+                    <button
+                      onClick={() => pickTrack(track)}
+                      className="flex w-full items-center gap-3 rounded-2xl p-2 text-left transition-colors hover:bg-surface-2 active:scale-[0.99]"
+                    >
+                      <img
+                        src={track.coverUrl}
+                        alt=""
+                        className="h-12 w-12 shrink-0 rounded-xl border border-line object-cover"
+                        referrerPolicy="no-referrer" loading="lazy" decoding="async"
+                      />
+                      <span className="min-w-0 flex-1">
+                        <span className="block truncate text-sm font-semibold text-fg">{track.title}</span>
+                        <span className="mt-0.5 block truncate text-xs text-muted">{track.artist}</span>
+                      </span>
+                      <Play size={14} className="shrink-0 fill-current text-subtle" />
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            )}
 
             <AnimatePresence mode="wait">
               {preview ? (
@@ -256,8 +287,16 @@ export function ThemeSongSearch({ onSelect, onClose, initialSong }: ThemeSongSea
                         </button>
                       </div>
                       <div className="flex-1 min-w-0">
-                        <h3 className="font-bold text-lg truncate leading-tight uppercase tracking-tight">{preview.title}</h3>
-                        <p className="text-muted text-xs font-black uppercase tracking-widest mt-1">{preview.artist}</p>
+                        <h3 className="truncate text-base font-bold leading-tight">{preview.title}</h3>
+                        <p className="mt-0.5 truncate text-xs text-muted">{preview.artist}</p>
+                        {results.length > 0 && (
+                          <button
+                            onClick={() => { setPreview(null); setIsPreviewPlaying(false); }}
+                            className="mt-1.5 text-xs font-medium text-accent transition-colors hover:underline"
+                          >
+                            Choose another
+                          </button>
+                        )}
                       </div>
 
                       {/* Hidden actual preview player - always rendered for mobile gesture compliance */}
@@ -331,7 +370,7 @@ export function ThemeSongSearch({ onSelect, onClose, initialSong }: ThemeSongSea
                   <div className="w-16 h-16 rounded-full bg-surface-2 flex items-center justify-center mb-6 text-subtle">
                     <Music size={32} />
                   </div>
-                  <p className="text-sm font-medium text-subtle">Paste link to preview</p>
+                  <p className="text-sm font-medium text-subtle">Search for a song to get started</p>
                 </motion.div>
               )}
             </AnimatePresence>

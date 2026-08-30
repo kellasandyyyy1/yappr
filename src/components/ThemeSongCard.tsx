@@ -58,10 +58,22 @@ export function ThemeSongCard({ song, isOwnProfile, onPlay: onPlayProp }: ThemeS
   // Bumping this remounts <YouTube>, which is the only way to retry a failed
   // embed: the underlying player is destroyed and rebuilt from scratch.
   const [playerNonce, setPlayerNonce] = useState(0);
+  // Transport state, read back off the IFrame API rather than guessed. There
+  // used to be a fake progress bar animating over a fixed 30s, which was
+  // wrong for every track that is not 30 seconds long.
+  const [currentTime, setCurrentTime] = useState(0);
+  const [duration, setDuration] = useState(0);
+  const [volume, setVolume] = useState(100);
+  // The transport row only appears once a song has actually been started, so
+  // an untouched card stays the compact chip it was designed as.
+  const [hasStarted, setHasStarted] = useState(false);
   const playerRef = useRef<any>(null);
   // True only between pressing play and playback stopping. Anything that starts
   // the video without this set is playback nobody asked for, and gets stopped.
   const userStartedRef = useRef(false);
+  // True while the scrubber is being dragged. The 250ms poll below must not
+  // yank the handle back to the player's position mid-drag.
+  const scrubbingRef = useRef(false);
   const { toast } = useToast();
   const playerId = React.useMemo(
     () => `yt-player-${song.youtubeId}-${Math.random().toString(36).substr(2, 9)}`,
@@ -108,6 +120,9 @@ export function ThemeSongCard({ song, isOwnProfile, onPlay: onPlayProp }: ThemeS
     setIsPlayerReady(false);
     setIsPlaying(false);
     setLoadError(null);
+    setCurrentTime(0);
+    setDuration(0);
+    setHasStarted(false);
     setPlayerNonce((n) => n + 1);
   };
 
@@ -126,6 +141,11 @@ export function ThemeSongCard({ song, isOwnProfile, onPlay: onPlayProp }: ThemeS
         return;
       }
       setIsPlaying(true);
+      setHasStarted(true);
+      try {
+        const total = event.target.getDuration?.() ?? 0;
+        if (total > 0) setDuration(total);
+      } catch { /* ignore */ }
       claimPlayback(playerId, () => {
         userStartedRef.current = false;
         try { event.target.pauseVideo(); } catch { /* ignore */ }
@@ -137,6 +157,9 @@ export function ThemeSongCard({ song, isOwnProfile, onPlay: onPlayProp }: ThemeS
       userStartedRef.current = false;
       releasePlayback(playerId);
       setIsPlaying(false);
+      // 0 is ended: send the head back to the start point so pressing play
+      // again replays rather than sitting at the end doing nothing.
+      if (event.data === 0) setCurrentTime(song.startTime || 0);
     }
   };
 
@@ -166,8 +189,10 @@ export function ThemeSongCard({ song, isOwnProfile, onPlay: onPlayProp }: ThemeS
         userStartedRef.current = true;
         // Essential for mobile: unMute and then Play
         // Some mobile browsers block sound-on autoplay, so we ensure it's loud
-        player.unMute();
-        player.setVolume(100);
+        // Respect the level the listener already chose rather than resetting
+        // to full every time they press play.
+        if (volume > 0) player.unMute();
+        player.setVolume(volume);
         player.seekTo(song.startTime || 0, true);
         // playVideo() is fire-and-forget: if the browser refuses the gesture
         // or the video is unplayable, nothing throws and nothing happens. The
@@ -194,17 +219,60 @@ export function ThemeSongCard({ song, isOwnProfile, onPlay: onPlayProp }: ThemeS
     }
   };
 
-  const toggleMute = (e: React.MouseEvent) => {
-    e.stopPropagation();
-    const player = playerRef.current;
-    if (!player || typeof player.mute !== 'function') return;
+  /**
+   * Poll the player for position.
+   *
+   * The IFrame API exposes getCurrentTime() but fires no timeupdate event, so
+   * polling is the only way to drive a progress bar from it. 250ms is a
+   * quarter-second of drift at worst and costs nothing measurable; it runs
+   * only while something is actually playing.
+   */
+  useEffect(() => {
+    if (!isPlaying) return;
+    const id = setInterval(() => {
+      const player = playerRef.current;
+      if (!player || typeof player.getCurrentTime !== 'function') return;
+      try {
+        if (!scrubbingRef.current) setCurrentTime(player.getCurrentTime() ?? 0);
+        const total = player.getDuration?.() ?? 0;
+        if (total > 0) setDuration(total);
+      } catch {
+        /* the player can be torn down between ticks */
+      }
+    }, 250);
+    return () => clearInterval(id);
+  }, [isPlaying]);
 
-    if (isMuted) {
-      player.unMute();
-    } else {
-      player.mute();
-    }
-    setIsMuted(!isMuted);
+  /** mm:ss. Duration is unknown until the player reports it, so it renders as
+   *  --:-- rather than a confident 0:00. */
+  const clock = (seconds: number) => {
+    if (!Number.isFinite(seconds) || seconds < 0) return '--:--';
+    const m = Math.floor(seconds / 60);
+    const sec = Math.floor(seconds % 60);
+    return `${m}:${sec.toString().padStart(2, '0')}`;
+  };
+
+  const seekTo = (seconds: number) => {
+    const player = playerRef.current;
+    setCurrentTime(seconds);
+    if (!player || typeof player.seekTo !== 'function') return;
+    try {
+      // allowSeekAhead=true only on release: during a drag it would fire a
+      // network request per pixel moved.
+      player.seekTo(seconds, !scrubbingRef.current);
+    } catch { /* ignore */ }
+  };
+
+  const applyVolume = (next: number) => {
+    const player = playerRef.current;
+    setVolume(next);
+    setIsMuted(next === 0);
+    if (!player || typeof player.setVolume !== 'function') return;
+    try {
+      player.setVolume(next);
+      if (next === 0) player.mute();
+      else player.unMute();
+    } catch { /* ignore */ }
   };
 
   // Stop the video when the card goes away.
@@ -238,9 +306,21 @@ export function ThemeSongCard({ song, isOwnProfile, onPlay: onPlayProp }: ThemeS
       animate={{ opacity: 1, y: 0 }}
       className="group relative w-full max-w-[340px]"
     >
-      {/* Invisible Player Container - slightly larger for mobile visibility checks but hidden */}
-      <div className="absolute opacity-0 pointer-events-none overflow-hidden -z-50"
-        style={{ width: '200px', height: '200px', top: -100, left: -100 }}>
+      {/* The video surface: present, but never shown.
+
+          This is an audio player — none of YouTube's own chrome is used and
+          the cover art comes from the thumbnail instead. The iframe still has
+          to render, though: display:none and visibility:hidden both let
+          browsers treat a player as off-screen and throttle or pause it, which
+          is the one thing that must not happen to something whose entire job
+          is to keep playing. So it is 1x1, pushed off-canvas, and very
+          slightly opaque rather than fully transparent — the same trick the
+          song picker's preview player already uses. aria-hidden keeps it out
+          of the accessibility tree; the controls below are what is exposed. */}
+      <div
+        aria-hidden="true"
+        className="pointer-events-none absolute overflow-hidden"
+        style={{ width: 1, height: 1, top: -1, left: -1, opacity: 0.01 }}>
         <YouTube
           // Remounting on retry is what actually rebuilds a dead embed.
           key={`${song.youtubeId}-${playerNonce}`}
@@ -384,29 +464,74 @@ export function ThemeSongCard({ song, isOwnProfile, onPlay: onPlayProp }: ThemeS
           ) : null}
         </div>
 
-        {/* Mute is hover-revealed rather than permanently occupying space next
-            to the play control, where it read as a second primary action. It
-            stays visible once playback starts, so touch — where hover never
-            fires — can still reach it when it matters. */}
-        <button
-          type="button"
-          onClick={toggleMute}
-          aria-label={isMuted ? 'Unmute' : 'Mute'}
-          className={cn(
-            "flex h-7 w-7 shrink-0 items-center justify-center rounded-full text-subtle",
-            "transition-opacity duration-100 hover:text-fg",
-            "focus-visible:opacity-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent",
-            isPlaying ? "opacity-100" : "opacity-0 group-hover:opacity-100",
-            loadError && "hidden"
-          )}
-        >
-          {isMuted ? <VolumeX size={13} /> : <Volume2 size={13} />}
-        </button>
-
         {isPlaying && (
           <span className="absolute inset-x-0 bottom-0 h-px bg-accent/50" />
         )}
       </div>
+
+      {/* Transport. Appears only once a track has actually been started, so an
+          untouched card stays the compact chip; a player in use gets a real
+          scrubber and a real level. Everything here reads from and writes to
+          the IFrame API — none of it is decorative, which the 30-second fake
+          progress bar this replaces very much was. */}
+      {hasStarted && !loadError && (
+        <div className="mt-1.5 flex items-center gap-2 px-0.5">
+          <span className="w-8 shrink-0 text-right text-[10px] tabular-nums text-subtle">
+            {clock(currentTime)}
+          </span>
+
+          <input
+            type="range"
+            min={0}
+            max={duration > 0 ? Math.floor(duration) : 100}
+            step={1}
+            value={Math.min(currentTime, duration > 0 ? duration : 100)}
+            disabled={duration === 0}
+            aria-label="Seek"
+            onPointerDown={() => { scrubbingRef.current = true; }}
+            onPointerUp={(e) => {
+              scrubbingRef.current = false;
+              seekTo(Number((e.target as HTMLInputElement).value));
+            }}
+            onChange={(e) => seekTo(Number(e.target.value))}
+            onClick={(e) => e.stopPropagation()}
+            className="track-slider h-1 min-w-0 flex-1"
+          />
+
+          <span className="w-8 shrink-0 text-[10px] tabular-nums text-subtle">
+            {duration > 0 ? clock(duration) : '--:--'}
+          </span>
+
+          {/* Volume stays collapsed to its icon until touched — a slider
+              permanently beside the scrubber made a two-control row read as
+              four. */}
+          <div className="group/vol relative flex shrink-0 items-center">
+            <button
+              type="button"
+              onClick={(e) => { e.stopPropagation(); applyVolume(volume === 0 ? 100 : 0); }}
+              aria-label={volume === 0 ? 'Unmute' : 'Mute'}
+              className="flex h-6 w-6 items-center justify-center rounded-full text-subtle transition-colors hover:text-fg"
+            >
+              {volume === 0 ? <VolumeX size={13} /> : <Volume2 size={13} />}
+            </button>
+            <input
+              type="range"
+              min={0}
+              max={100}
+              step={1}
+              value={volume}
+              aria-label="Volume"
+              onChange={(e) => applyVolume(Number(e.target.value))}
+              onClick={(e) => e.stopPropagation()}
+              className={cn(
+                "track-slider h-1 w-0 opacity-0 transition-all duration-150",
+                "group-hover/vol:ml-1.5 group-hover/vol:w-14 group-hover/vol:opacity-100",
+                "focus:ml-1.5 focus:w-14 focus:opacity-100"
+              )}
+            />
+          </div>
+        </div>
+      )}
     </motion.div>
   );
 }

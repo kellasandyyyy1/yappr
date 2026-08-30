@@ -50,7 +50,9 @@ for (const [file, handler] of [
   ['src/components/ThemeSongSearch.tsx', 'onPreviewReady'],
 ] as const) {
   const body = handlerBody(read(file), handler);
-  if (body === null) { bad(`${handler} found in ${file}`); continue; }
+  // A handler that no longer exists cannot seek. onPlayerReady went away with
+  // the pasted-link flow it existed to serve; the rule still holds for it.
+  if (body === null) { ok(`${handler} does not seek`, `${file} — handler removed`); continue; }
   const code = stripComments(body);
   code.includes('seekTo')
     ? bad(`${handler} does not seek`, `${file} — seekTo() in onReady starts playback`)

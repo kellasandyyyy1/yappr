@@ -335,6 +335,76 @@ async function startServer() {
     }
   }
 
+  /**
+   * Verifies the caller's SUPABASE access token.
+   *
+   * Deliberately not requireAuth() above: that one calls
+   * admin.auth().verifyIdToken(), a FIREBASE check. The client has sent a
+   * Supabase token since the migration, so requireAuth rejects every real
+   * request — see the note at the top of api/send-push.ts. Rather than leave
+   * this new route depending on a check that cannot pass, it verifies against
+   * the same service the client actually authenticates with.
+   */
+  async function requireSupabaseAuth(
+    req: express.Request,
+    res: express.Response,
+    next: express.NextFunction
+  ) {
+    const header = req.headers.authorization || "";
+    const token = header.startsWith("Bearer ") ? header.slice(7) : null;
+    if (!token) return res.status(401).json({ error: "Unauthorized" });
+
+    const url = process.env.VITE_SUPABASE_URL;
+    const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+    if (!url || !serviceKey) {
+      return res.status(503).json({ error: "Server is not configured" });
+    }
+
+    try {
+      const { createClient } = await import("@supabase/supabase-js");
+      const supa = createClient(url, serviceKey, { auth: { persistSession: false } });
+      const { data, error } = await supa.auth.getUser(token);
+      if (error || !data?.user) return res.status(401).json({ error: "Unauthorized" });
+      (req as express.Request & { uid?: string }).uid = data.user.id;
+      next();
+    } catch {
+      return res.status(401).json({ error: "Unauthorized" });
+    }
+  }
+
+  /**
+   * GET /api/youtube-search — the dev-server twin of api/youtube-search.ts.
+   *
+   * npm run dev serves the app through this file, not through Vercel's
+   * functions, so without this route song search only works in production.
+   * Both share api/_youtube.ts so the behaviour cannot drift.
+   */
+  app.get("/api/youtube-search", requireSupabaseAuth, async (req, res) => {
+    const apiKey = process.env.YOUTUBE_API_KEY;
+    if (!apiKey) {
+      console.error("YOUTUBE_API_KEY is not set — song search is disabled");
+      return res.status(503).json({ error: "Song search is not configured" });
+    }
+
+    const q = typeof req.query.q === "string" ? req.query.q : "";
+    if (q.trim().length < 2) return res.json({ tracks: [] });
+
+    try {
+      const { searchMusic, YouTubeSearchError } = await import("./api/_youtube");
+      try {
+        return res.json({ tracks: await searchMusic(q, apiKey) });
+      } catch (err) {
+        if (err instanceof YouTubeSearchError) {
+          return res.status(err.status).json({ error: err.message });
+        }
+        throw err;
+      }
+    } catch (err) {
+      console.error("youtube-search failed:", err);
+      return res.status(502).json({ error: "Song search failed" });
+    }
+  });
+
   // API Routes
   app.get("/api/health", (req, res) => {
     res.json({ status: "ok", timestamp: new Date().toISOString() });

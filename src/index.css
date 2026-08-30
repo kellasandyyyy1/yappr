@@ -200,6 +200,75 @@
     @apply shrink-0 border-t border-line bg-surface;
   }
 
+  /* Transport sliders for the audio-only music player.
+
+     A bare <input type="range"> renders as the platform control — on Windows
+     a thick light-grey bar with a large square thumb, which next to a 36px
+     cover looks like a form field someone left in the card. These are drawn
+     as a thin track with a small round thumb in the app's own colours, and
+     the thumb only appears on hover or focus so an idle player stays quiet.
+
+     -webkit- and -moz- rules cannot be combined into one selector list: an
+     unrecognised pseudo-element invalidates the whole rule, so each engine
+     needs its own copy. */
+  .track-slider {
+    -webkit-appearance: none;
+    appearance: none;
+    background: transparent;
+    cursor: pointer;
+  }
+  .track-slider:disabled {
+    cursor: default;
+    opacity: 0.5;
+  }
+  .track-slider::-webkit-slider-runnable-track {
+    height: 3px;
+    border-radius: 999px;
+    background: var(--color-line-strong);
+  }
+  .track-slider::-moz-range-track {
+    height: 3px;
+    border-radius: 999px;
+    background: var(--color-line-strong);
+  }
+  .track-slider::-moz-range-progress {
+    height: 3px;
+    border-radius: 999px;
+    background: var(--color-accent);
+  }
+  .track-slider::-webkit-slider-thumb {
+    -webkit-appearance: none;
+    appearance: none;
+    width: 10px;
+    height: 10px;
+    /* Centre the thumb on a 3px track: (3 - 10) / 2 */
+    margin-top: -3.5px;
+    border: none;
+    border-radius: 999px;
+    background: var(--color-accent);
+    opacity: 0;
+    transition: opacity 100ms;
+  }
+  .track-slider::-moz-range-thumb {
+    width: 10px;
+    height: 10px;
+    border: none;
+    border-radius: 999px;
+    background: var(--color-accent);
+    opacity: 0;
+    transition: opacity 100ms;
+  }
+  .group:hover .track-slider::-webkit-slider-thumb,
+  .track-slider:hover::-webkit-slider-thumb,
+  .track-slider:focus-visible::-webkit-slider-thumb {
+    opacity: 1;
+  }
+  .group:hover .track-slider::-moz-range-thumb,
+  .track-slider:hover::-moz-range-thumb,
+  .track-slider:focus-visible::-moz-range-thumb {
+    opacity: 1;
+  }
+
   .scrollbar-hide::-webkit-scrollbar {
     display: none;
   }
