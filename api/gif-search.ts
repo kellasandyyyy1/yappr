@@ -1,6 +1,12 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node';
 import { createClient } from '@supabase/supabase-js';
-import { searchGifs, GifSearchError } from './_giphy';
+// The .js extension is REQUIRED and must not be removed. package.json sets
+// "type": "module", so Vercel runs these functions as ESM, and Node's ESM
+// loader does no extension guessing: an extensionless specifier throws
+// ERR_MODULE_NOT_FOUND at runtime. It resolved fine locally because dev goes
+// through server.ts under tsx, which does guess — so this only ever failed in
+// production. TypeScript maps the .js back to the .ts source at build time.
+import { searchGifs, GifSearchError } from './_giphy.js';
 
 /**
  * GET /api/gif-search?q=… — proxied GIPHY search.

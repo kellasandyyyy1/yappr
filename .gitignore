@@ -29,3 +29,6 @@ skills-lock.json
 # Migration working data. The export contains real user records pulled out of
 # Firestore, so it must never reach the repo.
 migration-data/
+
+.vercel
+.env*
