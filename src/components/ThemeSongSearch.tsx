@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import YouTube, { YouTubeProps } from 'react-youtube';
-import { Search, X, Music, Check, Loader2, Clock, History, Play, Square, AlertCircle } from 'lucide-react';
+import { Search, X, Music, Check, Loader2, Clock, History, Play, Square, AlertCircle, RefreshCw } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { ThemeSong, MusicHistory } from '../types';
 import { auth as authApi, songs as songsApi } from '../lib/db';
@@ -163,41 +163,46 @@ export function ThemeSongSearch({ onSelect, onClose, initialSong }: ThemeSongSea
     <div className="flex flex-col h-full">
       {/* Hidden Player for metadata */}
 
-      <div className="flex items-center justify-between mb-8 mt-2">
-        <div className="flex items-center gap-4">
-          <h2 className="text-xl font-bold uppercase tracking-tight text-fg">Music</h2>
-          <div className="flex bg-black/40 rounded-full p-1 border border-line">
-            <button
-              onClick={() => setActiveTab('search')}
-              className={cn(
-                "px-5 py-2 rounded-full text-xs font-black uppercase tracking-widest transition-colors",
-                activeTab === 'search' ? "bg-white text-black shadow-[0_4px_12px_rgba(255,255,255,0.2)]" : "text-muted hover:text-fg"
-              )}
-            >
-              Search
-            </button>
-            <button
-              onClick={() => setActiveTab('history')}
-              className={cn(
-                "px-5 py-2 rounded-full text-xs font-black uppercase tracking-widest transition-colors",
-                activeTab === 'history' ? "bg-white text-black shadow-[0_4px_12px_rgba(255,255,255,0.2)]" : "text-muted hover:text-fg"
-              )}
-            >
-              History
-            </button>
+      <div className="mb-5 mt-1 flex items-center justify-between gap-3">
+        <div className="flex items-center gap-3">
+          <h2 className="text-base font-bold text-fg">Music</h2>
+
+          {/* Two tabs of equal weight. The active one used to be a filled
+              white pill with a glow and the inactive one bare text, so they
+              read as a primary button standing next to a label rather than as
+              two choices. Both are pills now; only the fill says which is on. */}
+          <div role="tablist" aria-label="Music source" className="flex items-center gap-1 rounded-full border border-line bg-surface-2 p-0.5">
+            {(["search", "history"] as const).map((tab) => (
+              <button
+                key={tab}
+                role="tab"
+                aria-selected={activeTab === tab}
+                onClick={() => setActiveTab(tab)}
+                className={cn(
+                  "rounded-full px-3.5 py-1.5 text-xs font-semibold capitalize transition-colors duration-100",
+                  activeTab === tab
+                    ? "bg-accent text-white"
+                    : "text-muted hover:bg-surface-3 hover:text-fg"
+                )}
+              >
+                {tab}
+              </button>
+            ))}
           </div>
         </div>
+
         <button
           onClick={onClose}
-          className="w-10 h-10 rounded-full bg-surface-2 flex items-center justify-center border border-line hover:bg-surface-3 transition-colors"
+          aria-label="Close"
+          className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-muted transition-colors hover:bg-surface-2 hover:text-fg"
         >
-          <X size={20} />
+          <X size={18} />
         </button>
       </div>
 
-      <div className="min-h-0 flex-1 overflow-y-auto pr-1 scrollbar-hide space-y-6">
+      <div className="min-h-0 flex-1 overflow-y-auto pr-1 scrollbar-hide">
         {activeTab === 'search' ? (
-          <div className="space-y-6">
+          <div className="space-y-3">
             <div className="space-y-3">
               <div className="relative">
                 <input
@@ -262,45 +267,74 @@ export function ThemeSongSearch({ onSelect, onClose, initialSong }: ThemeSongSea
                   initial={{ opacity: 0, y: 10 }}
                   animate={{ opacity: 1, y: 0 }}
                   exit={{ opacity: 0, scale: 0.95 }}
-                  className="space-y-6 pb-20"
+                  className="pb-6"
                 >
-                  <div className="p-6 rounded-3xl bg-surface-2 border border-line overflow-hidden relative group shadow-2xl">
-                    <div className="flex items-center gap-5">
-                      <div className="w-16 h-16 rounded-2xl overflow-hidden shadow-2xl border border-line bg-black/40 relative group/player">
+                  {/* One card, three sections, thin dividers.
+                      Each section used to be its own rounded, bordered,
+                      shadowed box with its own padding — three stacked cards
+                      for what is one continuous task. Now: a single surface,
+                      the same 16px padding throughout, and a hairline rule
+                      where a box edge used to be. */}
+                  <div className="relative overflow-hidden rounded-2xl border border-line bg-surface-2">
+
+                    {/* — Selected track — */}
+                    <div className="flex items-center gap-3 p-4">
+                      <div className="relative h-14 w-14 shrink-0 overflow-hidden rounded-xl border border-line bg-black/40">
                         <img
                           src={preview.coverUrl}
-                          alt={preview.title}
-                          className={cn(
-                            "w-full h-full object-cover transition-transform duration-150",
-                            isPreviewPlaying ? "scale-110" : "scale-100"
-                          )}
+                          alt=""
+                          className="h-full w-full object-cover"
                           referrerPolicy="no-referrer" loading="lazy" decoding="async" />
                         <button
                           onClick={togglePreviewPlay}
-                          className="absolute inset-0 flex items-center justify-center bg-black/40 hover:bg-black/60 transition-colors"
+                          aria-label={isPreviewPlaying ? "Stop preview" : "Preview from the start point"}
+                          className="absolute inset-0 flex items-center justify-center bg-black/45 transition-colors hover:bg-black/65"
                         >
-                          {isPreviewPlaying ? (
-                            <Square size={24} className="text-white fill-white" />
-                          ) : (
-                            <Play size={24} className="text-white fill-white ml-1" />
-                          )}
+                          {isPreviewPlaying
+                            ? <Square size={16} className="fill-white text-white" />
+                            : <Play size={16} className="fill-white text-white" />}
                         </button>
                       </div>
-                      <div className="flex-1 min-w-0">
-                        <h3 className="truncate text-base font-bold leading-tight">{preview.title}</h3>
+
+                      <div className="min-w-0 flex-1">
+                        <h3 className="truncate text-sm font-semibold leading-tight text-fg">{preview.title}</h3>
                         <p className="mt-0.5 truncate text-xs text-muted">{preview.artist}</p>
-                        {results.length > 0 && (
+
+                        <div className="mt-1.5 flex items-center gap-3">
+                          {/* A play glyph on cover art is ambiguous — it reads
+                              as "this is a video" as easily as "hear it". The
+                              word says which. */}
                           <button
-                            onClick={() => { setPreview(null); setIsPreviewPlaying(false); }}
-                            className="mt-1.5 text-xs font-medium text-accent transition-colors hover:underline"
+                            onClick={togglePreviewPlay}
+                            className="flex items-center gap-1 text-[11px] font-medium text-muted transition-colors hover:text-fg"
                           >
-                            Choose another
+                            {isPreviewPlaying
+                              ? <Square size={10} className="fill-current" />
+                              : <Play size={10} className="fill-current" />}
+                            {isPreviewPlaying ? 'Stop' : 'Preview'}
                           </button>
-                        )}
+
+                          {results.length > 0 && (
+                            <button
+                              onClick={() => { setPreview(null); setIsPreviewPlaying(false); }}
+                              className="flex items-center gap-1 text-[11px] font-medium text-muted transition-colors hover:text-fg"
+                            >
+                              <RefreshCw size={10} />
+                              Choose another
+                            </button>
+                          )}
+                        </div>
                       </div>
 
-                      {/* Hidden actual preview player - always rendered for mobile gesture compliance */}
-                      <div className="absolute opacity-0 pointer-events-none w-1 h-1 overflow-hidden" style={{ top: -10, left: -10 }}>
+                      {/* The preview player: rendered, never shown. Same
+                          reasoning as the profile card — display:none lets a
+                          browser throttle or pause a player, so this is 1x1 and
+                          off-canvas instead. */}
+                      <div
+                        aria-hidden="true"
+                        className="pointer-events-none absolute overflow-hidden"
+                        style={{ width: 1, height: 1, top: -1, left: -1, opacity: 0.01 }}
+                      >
                         <YouTube
                           videoId={preview.youtubeId}
                           opts={{
@@ -320,21 +354,24 @@ export function ThemeSongSearch({ onSelect, onClose, initialSong }: ThemeSongSea
                         />
                       </div>
                     </div>
-                  </div>
 
-                  <div className="p-8 rounded-3xl bg-surface-2 border border-line space-y-5">
-                    <div className="flex items-center justify-between">
-                      <label className="text-xs font-black uppercase tracking-widest text-muted ml-1 flex items-center gap-2">
-                        <Clock size={12} />
-                        Start Timestamp
-                      </label>
-                      <div className="px-4 py-1.5 rounded-full bg-accent/10 border border-accent/20 text-accent text-xs font-black tracking-widest shadow-inner">
-                        {formatTime(startTime)}
+                    {/* — Start point — */}
+                    <div className="border-t border-line p-4">
+                      <div className="flex items-center justify-between gap-2">
+                        <label htmlFor="start-time" className="flex items-center gap-1.5 text-xs font-medium text-muted">
+                          <Clock size={12} />
+                          Start at
+                        </label>
+                        <span className="rounded-full bg-accent/10 px-2 py-0.5 text-xs font-semibold tabular-nums text-accent">
+                          {formatTime(startTime)}
+                        </span>
                       </div>
-                    </div>
 
-                    <div className="relative px-2 py-4">
+                      {/* The slider had py-4 inside a p-8 box: roughly 48px of
+                          air around a 2px control, which is what made this
+                          section look empty next to the result above it. */}
                       <input
+                        id="start-time"
                         type="range"
                         min="0"
                         max="300"
@@ -344,33 +381,37 @@ export function ThemeSongSearch({ onSelect, onClose, initialSong }: ThemeSongSea
                           setStartTime(Number(e.target.value));
                           setIsPreviewPlaying(false); // Reset preview when switching time
                         }}
-                        className="w-full h-2 bg-surface-2 rounded-lg appearance-none cursor-pointer accent-[#3b82f6]"
+                        style={{ ['--fill' as string]: `${(startTime / 300) * 100}%` }}
+                        className="track-slider mt-3 h-1 w-full"
                       />
+
+                      <p className="mt-2 text-[11px] leading-snug text-subtle">
+                        Drag to choose where the song starts, then hit Preview to hear it.
+                      </p>
                     </div>
 
-                    <p className="text-xs text-subtle ml-1 leading-relaxed text-center italic">Drag the slider and press play on the cover to test the start point.</p>
-                  </div>
-
-                  <div className="pt-4">
-                    <button
-                      onClick={handleSave}
-                      className="w-full py-5 bg-accent text-white text-xs font-black rounded-full tracking-widest uppercase shadow-[0_20px_40px_rgba(37,99,235,0.3)] active:scale-95 transition-colors flex items-center justify-center gap-3 border border-line"
-                    >
-                      <Check size={16} />
-                      Confirm Selection
-                    </button>
+                    {/* — Confirm — */}
+                    <div className="border-t border-line p-4">
+                      <button
+                        onClick={handleSave}
+                        className="btn-primary flex h-11 w-full items-center justify-center gap-2 text-sm"
+                      >
+                        <Check size={16} />
+                        Confirm selection
+                      </button>
+                    </div>
                   </div>
                 </motion.div>
               ) : (
                 <motion.div
                   initial={{ opacity: 0 }}
                   animate={{ opacity: 1 }}
-                  className="flex flex-col items-center justify-center py-24 border-2 border-dashed border-line rounded-3xl bg-surface-2"
+                  className="flex flex-col items-center justify-center gap-2 rounded-2xl border border-dashed border-line py-12"
                 >
-                  <div className="w-16 h-16 rounded-full bg-surface-2 flex items-center justify-center mb-6 text-subtle">
-                    <Music size={32} />
+                  <div className="flex h-11 w-11 items-center justify-center rounded-full bg-surface-2 text-subtle">
+                    <Music size={20} />
                   </div>
-                  <p className="text-sm font-medium text-subtle">Search for a song to get started</p>
+                  <p className="text-sm text-muted">Search for a song to get started</p>
                 </motion.div>
               )}
             </AnimatePresence>
@@ -384,7 +425,7 @@ export function ThemeSongSearch({ onSelect, onClose, initialSong }: ThemeSongSea
                 <RowSkeleton />
               </div>
             ) : history.length > 0 ? (
-              <div className="grid grid-cols-1 gap-3">
+              <div className="space-y-1">
                 {history.map((item) => (
                   <button
                     key={item.id}
@@ -393,9 +434,9 @@ export function ThemeSongSearch({ onSelect, onClose, initialSong }: ThemeSongSea
                       setStartTime(item.startTime);
                       setActiveTab('search');
                     }}
-                    className="flex items-center gap-4 p-4 rounded-3xl bg-surface-2 border border-line hover:bg-surface-2 transition-colors text-left group active:scale-98"
+                    className="group flex w-full items-center gap-3 rounded-2xl p-2 text-left transition-colors hover:bg-surface-2 active:scale-[0.99]"
                   >
-                    <div className="w-14 h-14 rounded-2xl overflow-hidden shrink-0 border border-line shadow-lg bg-black/40">
+                    <div className="h-12 w-12 shrink-0 overflow-hidden rounded-xl border border-line bg-black/40">
                       <img
                         src={item.coverUrl}
                         alt=""
@@ -403,25 +444,23 @@ export function ThemeSongSearch({ onSelect, onClose, initialSong }: ThemeSongSea
                         referrerPolicy="no-referrer" loading="lazy" decoding="async" />
                     </div>
                     <div className="flex-1 min-w-0">
-                      <h4 className="text-sm font-bold truncate group-hover:text-accent transition-colors uppercase tracking-tight">{item.title}</h4>
-                      <div className="flex items-center gap-2 mt-1">
-                        <p className="text-xs text-muted truncate uppercase tracking-widest font-black">{item.artist}</p>
-                        <span className="w-1 h-1 rounded-full bg-surface-3" />
-                        <p className="text-xs text-accent font-black tracking-widest uppercase">{formatTime(item.startTime)}</p>
+                      <h4 className="truncate text-sm font-semibold text-fg transition-colors group-hover:text-accent">{item.title}</h4>
+                      <div className="mt-0.5 flex items-center gap-1.5">
+                        <p className="truncate text-xs text-muted">{item.artist}</p>
+                        <span className="h-1 w-1 shrink-0 rounded-full bg-line-strong" />
+                        <p className="shrink-0 text-xs tabular-nums text-subtle">{formatTime(item.startTime)}</p>
                       </div>
                     </div>
-                    <div className="w-10 h-10 rounded-full bg-surface-2 flex items-center justify-center text-subtle group-hover:text-accent group-hover:bg-accent/10 transition-colors">
-                      <Play size={16} fill="currentColor" />
-                    </div>
+                    <Play size={14} className="shrink-0 fill-current text-subtle transition-colors group-hover:text-accent" />
                   </button>
                 ))}
               </div>
             ) : (
-              <div className="flex flex-col items-center justify-center py-24 border-2 border-dashed border-line rounded-3xl bg-surface-2">
-                <div className="w-16 h-16 rounded-full bg-surface-2 flex items-center justify-center mb-6 text-subtle">
-                  <History size={32} />
+              <div className="flex flex-col items-center justify-center gap-2 rounded-2xl border border-dashed border-line py-12">
+                <div className="flex h-11 w-11 items-center justify-center rounded-full bg-surface-2 text-subtle">
+                  <History size={20} />
                 </div>
-                <p className="text-sm font-medium text-subtle">No history yet</p>
+                <p className="text-sm text-muted">No history yet</p>
               </div>
             )}
           </div>

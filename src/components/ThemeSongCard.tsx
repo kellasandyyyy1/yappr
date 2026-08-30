@@ -495,7 +495,8 @@ export function ThemeSongCard({ song, isOwnProfile, onPlay: onPlayProp }: ThemeS
             }}
             onChange={(e) => seekTo(Number(e.target.value))}
             onClick={(e) => e.stopPropagation()}
-            className="track-slider h-1 min-w-0 flex-1"
+            style={{ ['--fill' as string]: `${duration > 0 ? (currentTime / duration) * 100 : 0}%` }}
+            className="track-slider track-slider-quiet h-1 min-w-0 flex-1"
           />
 
           <span className="w-8 shrink-0 text-[10px] tabular-nums text-subtle">
@@ -523,8 +524,9 @@ export function ThemeSongCard({ song, isOwnProfile, onPlay: onPlayProp }: ThemeS
               aria-label="Volume"
               onChange={(e) => applyVolume(Number(e.target.value))}
               onClick={(e) => e.stopPropagation()}
+              style={{ ['--fill' as string]: `${volume}%` }}
               className={cn(
-                "track-slider h-1 w-0 opacity-0 transition-all duration-150",
+                "track-slider track-slider-quiet h-1 w-0 opacity-0 transition-all duration-150",
                 "group-hover/vol:ml-1.5 group-hover/vol:w-14 group-hover/vol:opacity-100",
                 "focus:ml-1.5 focus:w-14 focus:opacity-100"
               )}
