@@ -24,6 +24,25 @@ const DEFAULT_ZOOM = 13;
 const ACCENT = '#3b82f6';
 
 /**
+ * Per-space marker colours for the combined map.
+ *
+ * Chosen to stay apart on a dark basemap and to remain distinguishable to the
+ * common forms of colour blindness — no red/green pair carries meaning on its
+ * own. A space is assigned one by index, so the same space keeps its colour
+ * for as long as the list order holds.
+ */
+export const SPACE_COLORS = [
+  '#3b82f6', // blue   — the app accent, so a single space looks native
+  '#f59e0b', // amber
+  '#a855f7', // purple
+  '#14b8a6', // teal
+  '#ec4899', // pink
+  '#84cc16', // lime
+];
+
+export const spaceColor = (index: number) => SPACE_COLORS[index % SPACE_COLORS.length];
+
+/**
  * A teardrop pin drawn as SVG. `divIcon` rather than `icon` so there is no
  * network request and no bundler asset resolution to get wrong.
  */
@@ -76,7 +95,9 @@ export interface MapPin {
   id: string;
   latitude: number;
   longitude: number;
-  /** Renders in a muted colour — used for pins someone else shared. */
+  /** Marker colour. Defaults to the app accent. */
+  color?: string;
+  /** Dimmed — used for pins someone else added. */
   muted?: boolean;
 }
 
@@ -100,10 +121,16 @@ export function PinMap({
   zoom = DEFAULT_ZOOM,
   className,
 }: PinMapProps) {
-  const icons = useMemo(
-    () => ({ own: pinIcon(ACCENT), shared: pinIcon(ACCENT, true), draft: pinIcon('#f87171') }),
-    []
-  );
+  // Icons are cached per colour+dimmed pair: divIcon builds an HTML string,
+  // and rebuilding one per marker per render is wasted work on a busy map.
+  const iconCache = useMemo(() => new Map<string, L.DivIcon>(), []);
+  const iconFor = (color: string, dimmed: boolean) => {
+    const key = `${color}|${dimmed}`;
+    let icon = iconCache.get(key);
+    if (!icon) { icon = pinIcon(color, dimmed); iconCache.set(key, icon); }
+    return icon;
+  };
+  const draftIcon = useMemo(() => pinIcon('#f87171'), []);
 
   return (
     <div className={cn('relative overflow-hidden rounded-2xl border border-line', className)}>
@@ -146,13 +173,13 @@ export function PinMap({
           <Marker
             key={p.id}
             position={[p.latitude, p.longitude]}
-            icon={p.muted ? icons.shared : icons.own}
+            icon={iconFor(p.color ?? ACCENT, !!p.muted)}
             eventHandlers={onPinClick ? { click: () => onPinClick(p.id) } : undefined}
           />
         ))}
 
         {draft && (
-          <Marker position={[draft.latitude, draft.longitude]} icon={icons.draft} />
+          <Marker position={[draft.latitude, draft.longitude]} icon={draftIcon} />
         )}
       </MapContainer>
     </div>

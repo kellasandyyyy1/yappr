@@ -1,19 +1,20 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { MapPin as MapPinIcon, Image as ImageIcon, Video as VideoIcon, Music, X, Loader2, Check, Users as UsersIcon, Search } from 'lucide-react';
+import { MapPin as MapPinIcon, Image as ImageIcon, Video as VideoIcon, Music, X, Loader2 } from 'lucide-react';
 import { Modal, ModalHeader, ModalBody, ModalFooter } from './Modal';
 import { PinMap, useCurrentLocation } from './PinMap';
 import { ThemeSongSearch } from './ThemeSongSearch';
 import { VideoPlayer } from './VideoPlayer';
 import { useToast } from './ToastContext';
 import { uploadFile, uploadFileWithProgress, UploadError } from '../lib/supabase';
-import { chats as chatsApi, follows as followsApi } from '../lib/db';
-import { pins as pinsApi, PinMediaType } from '../lib/pins';
+import { pins as pinsApi, PinMediaType, MapSpace } from '../lib/pins';
 import { validateVideo, extractPoster, VIDEO_ACCEPT } from '../lib/video';
-import { cn } from '../lib/utils';
-import type { User, Chat, ThemeSong } from '../types';
+import { describeError } from '../lib/utils';
+import type { User, ThemeSong } from '../types';
 
 interface CreatePinModalProps {
   user: User;
+  /** The pin is scoped to this space; membership decides who sees it. */
+  space: MapSpace;
   onClose: () => void;
   onCreated?: (pinId: string) => void;
 }
@@ -21,25 +22,20 @@ interface CreatePinModalProps {
 interface DraftMedia {
   key: string;
   type: PinMediaType;
-  /** Local preview while composing. */
   previewUrl?: string;
   file?: File;
   posterBlob?: Blob;
   song?: ThemeSong;
 }
 
-type Step = 'place' | 'attach' | 'share';
-
 /**
- * Drop a pin, attach media to it, choose who sees it.
+ * Drop a pin into a space, and attach media to it.
  *
- * Three steps rather than one screen: placing a pin is a map interaction that
- * wants the whole panel, and the share step is the one that actually matters
- * for privacy, so it gets its own moment rather than being a control the user
- * scrolls past.
+ * Two steps, not three: there is no recipient picker any more. The space's
+ * membership already decides who sees this, which is the point of spaces.
  */
-export function CreatePinModal({ user, onClose, onCreated }: CreatePinModalProps) {
-  const [step, setStep] = useState<Step>('place');
+export function CreatePinModal({ user, space, onClose, onCreated }: CreatePinModalProps) {
+  const [step, setStep] = useState<'place' | 'attach'>('place');
   const [draft, setDraft] = useState<{ latitude: number; longitude: number } | null>(null);
   const [caption, setCaption] = useState('');
   const [media, setMedia] = useState<DraftMedia[]>([]);
@@ -47,38 +43,11 @@ export function CreatePinModal({ user, onClose, onCreated }: CreatePinModalProps
   const [saving, setSaving] = useState(false);
   const [progress, setProgress] = useState<number | null>(null);
 
-  const [people, setPeople] = useState<User[]>([]);
-  const [conversations, setConversations] = useState<Chat[]>([]);
-  const [pickedUsers, setPickedUsers] = useState<Set<string>>(new Set());
-  const [pickedChats, setPickedChats] = useState<Set<string>>(new Set());
-  const [shareQuery, setShareQuery] = useState('');
-
   const photoRef = useRef<HTMLInputElement>(null);
   const videoRef = useRef<HTMLInputElement>(null);
   const { toast } = useToast();
   const { center, asking } = useCurrentLocation();
 
-  // Share targets are loaded up front so the last step never waits.
-  useEffect(() => {
-    let cancelled = false;
-    (async () => {
-      try {
-        const [mutuals, chats] = await Promise.all([
-          followsApi.mentionable(user.uid),
-          chatsApi.list(user.uid),
-        ]);
-        if (cancelled) return;
-        setPeople(mutuals);
-        setConversations(chats.filter((c) => c.type === 'group'));
-      } catch (err) {
-        console.error('Error loading share targets:', err);
-      }
-    })();
-    return () => { cancelled = true; };
-  }, [user.uid]);
-
-  // Object URLs outlive the component unless revoked, and a few video blobs is
-  // real memory.
   useEffect(
     () => () => media.forEach((m) => m.previewUrl && URL.revokeObjectURL(m.previewUrl)),
     [media]
@@ -110,9 +79,8 @@ export function CreatePinModal({ user, onClose, onCreated }: CreatePinModalProps
       ]);
       URL.revokeObjectURL(poster.objectUrl);
     } catch (err) {
-      const message = err instanceof Error ? err.message : 'Could not read that video.';
       console.error('[pin] poster extraction failed', { name: file.name, err });
-      toast(message, 'error');
+      toast(describeError(err), 'error');
     }
   };
 
@@ -122,12 +90,6 @@ export function CreatePinModal({ user, onClose, onCreated }: CreatePinModalProps
       if (gone?.previewUrl) URL.revokeObjectURL(gone.previewUrl);
       return prev.filter((m) => m.key !== key);
     });
-
-  const toggle = (set: Set<string>, id: string, apply: (s: Set<string>) => void) => {
-    const next = new Set(set);
-    next.has(id) ? next.delete(id) : next.add(id);
-    apply(next);
-  };
 
   const save = async () => {
     if (!draft) return;
@@ -166,47 +128,41 @@ export function CreatePinModal({ user, onClose, onCreated }: CreatePinModalProps
       }
 
       const pinId = await pinsApi.create({
+        spaceId: space.id,
         creatorId: user.uid,
         latitude: draft.latitude,
         longitude: draft.longitude,
         caption,
         media: uploaded,
-        shareWithUserIds: [...pickedUsers],
-        shareWithConversationIds: [...pickedChats],
       });
 
-      toast('Memory pinned', 'success');
+      toast(`Pinned to ${space.name}`, 'success');
       onCreated?.(pinId);
       onClose();
     } catch (err) {
       console.error('Error creating pin:', err);
-      toast(err instanceof UploadError ? err.message : 'Could not save that pin', 'error');
+      toast(err instanceof UploadError ? err.message : describeError(err), 'error');
     } finally {
       setSaving(false);
       setProgress(null);
     }
   };
 
-  const filteredPeople = people.filter((p) =>
-    `${p.displayName} ${p.username}`.toLowerCase().includes(shareQuery.toLowerCase())
-  );
-  const shareCount = pickedUsers.size + pickedChats.size;
-
   return (
     <Modal onClose={onClose} size="lg" labelledBy="pin-title" className="sm:h-[85vh]">
       <ModalHeader
-        title="Memory pin"
+        title="New pin"
         subtitle={
-          step === 'place' ? 'Tap the map to drop a pin'
-          : step === 'attach' ? 'Attach photos, videos or a song'
-          : 'Choose who can see it'
+          step === 'place'
+            ? `Tap the map — everyone in ${space.name} will see it`
+            : 'Attach photos, videos or a song'
         }
         onClose={onClose}
         id="pin-title"
       />
 
       <ModalBody className="scrollbar-thin">
-        {step === 'place' && (
+        {step === 'place' ? (
           <div className="space-y-3">
             <PinMap
               center={center}
@@ -238,9 +194,7 @@ export function CreatePinModal({ user, onClose, onCreated }: CreatePinModalProps
               className="field"
             />
           </div>
-        )}
-
-        {step === 'attach' && (
+        ) : (
           <div className="space-y-3">
             <input type="file" ref={photoRef} onChange={addPhoto} accept="image/*" className="hidden" />
             <input type="file" ref={videoRef} onChange={addVideo} accept={VIDEO_ACCEPT} className="hidden" />
@@ -281,9 +235,7 @@ export function CreatePinModal({ user, onClose, onCreated }: CreatePinModalProps
                       <img src={m.song.coverUrl} alt="" referrerPolicy="no-referrer" className="h-12 w-12 shrink-0 rounded-lg object-cover" />
                     )}
                     <div className="min-w-0 flex-1">
-                      <p className="truncate text-sm text-fg">
-                        {m.song?.title ?? m.file?.name ?? m.type}
-                      </p>
+                      <p className="truncate text-sm text-fg">{m.song?.title ?? m.file?.name ?? m.type}</p>
                       <p className="text-xs capitalize text-subtle">{m.type}</p>
                     </div>
                     <button
@@ -293,78 +245,6 @@ export function CreatePinModal({ user, onClose, onCreated }: CreatePinModalProps
                       className="shrink-0 p-1 text-subtle transition-colors hover:text-danger"
                     >
                       <X size={15} />
-                    </button>
-                  </li>
-                ))}
-              </ul>
-            )}
-          </div>
-        )}
-
-        {step === 'share' && (
-          <div className="space-y-3">
-            {/* A pin has no public state. Sharing with nobody is allowed and
-                means exactly that: only you will ever see it. */}
-            <p className="text-xs leading-relaxed text-muted">
-              Pins are private. Only the people and groups you pick here will see this one.
-            </p>
-
-            <div className="relative">
-              <input
-                value={shareQuery}
-                onChange={(e) => setShareQuery(e.target.value)}
-                placeholder="Search people…"
-                className="field pl-10"
-              />
-              <Search size={16} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-subtle" />
-            </div>
-
-            {conversations.length > 0 && (
-              <>
-                <h3 className="pt-1 text-xs font-semibold uppercase tracking-wide text-subtle">Groups</h3>
-                <ul className="space-y-1">
-                  {conversations.map((c) => (
-                    <li key={c.id}>
-                      <button
-                        type="button"
-                        onClick={() => toggle(pickedChats, c.id, setPickedChats)}
-                        className={cn(
-                          'flex w-full items-center gap-3 rounded-xl p-2 text-left transition-colors',
-                          pickedChats.has(c.id) ? 'bg-accent/10' : 'hover:bg-surface-2'
-                        )}
-                      >
-                        <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-surface-3 text-muted">
-                          <UsersIcon size={16} />
-                        </span>
-                        <span className="min-w-0 flex-1 truncate text-sm text-fg">{c.name ?? 'Group'}</span>
-                        {pickedChats.has(c.id) && <Check size={16} className="shrink-0 text-accent" />}
-                      </button>
-                    </li>
-                  ))}
-                </ul>
-              </>
-            )}
-
-            <h3 className="pt-1 text-xs font-semibold uppercase tracking-wide text-subtle">People</h3>
-            {filteredPeople.length === 0 ? (
-              <p className="py-6 text-center text-sm text-subtle">No one to show.</p>
-            ) : (
-              <ul className="space-y-1">
-                {filteredPeople.map((p) => (
-                  <li key={p.uid}>
-                    <button
-                      type="button"
-                      onClick={() => toggle(pickedUsers, p.uid, setPickedUsers)}
-                      className={cn(
-                        'flex w-full items-center gap-3 rounded-xl p-2 text-left transition-colors',
-                        pickedUsers.has(p.uid) ? 'bg-accent/10' : 'hover:bg-surface-2'
-                      )}
-                    >
-                      <span className="min-w-0 flex-1">
-                        <span className="block truncate text-sm text-fg">{p.displayName}</span>
-                        <span className="block truncate text-xs text-muted">@{p.username}</span>
-                      </span>
-                      {pickedUsers.has(p.uid) && <Check size={16} className="shrink-0 text-accent" />}
                     </button>
                   </li>
                 ))}
@@ -388,25 +268,19 @@ export function CreatePinModal({ user, onClose, onCreated }: CreatePinModalProps
         )}
 
         <div className="flex items-center gap-2">
-          {step !== 'place' && (
-            <button
-              type="button"
-              onClick={() => setStep(step === 'share' ? 'attach' : 'place')}
-              className="btn-secondary h-11 px-4 text-sm"
-            >
+          {step === 'attach' && (
+            <button type="button" onClick={() => setStep('place')} className="btn-secondary h-11 px-4 text-sm">
               Back
             </button>
           )}
           <button
             type="button"
             disabled={!draft || saving}
-            onClick={() => (step === 'share' ? save() : setStep(step === 'place' ? 'attach' : 'share'))}
+            onClick={() => (step === 'place' ? setStep('attach') : save())}
             className="btn-primary ml-auto flex h-11 items-center justify-center gap-2 px-5 text-sm"
           >
             {saving && <Loader2 size={16} className="animate-spin" />}
-            {step === 'share'
-              ? saving ? 'Saving…' : shareCount > 0 ? `Share with ${shareCount}` : 'Save privately'
-              : 'Next'}
+            {step === 'place' ? 'Next' : saving ? 'Saving…' : 'Drop pin'}
           </button>
         </div>
       </ModalFooter>
