@@ -1,9 +1,21 @@
-@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap');
+/* Geist for the interface, Geist Mono for code, Geist Pixel for the wordmark
+   and screen titles. One request for all three: Google Fonts serves a combined
+   stylesheet for a multi-family query, so this is fewer round-trips than three
+   @imports and the families still cache independently downstream. */
+@import url('https://fonts.googleapis.com/css2?family=Geist:wght@400..800&family=Geist+Mono:wght@400..700&family=Geist+Pixel&display=swap');
 @import "tailwindcss";
 
 @theme {
-  --font-sans: "Inter", ui-sans-serif, system-ui, sans-serif;
-  --font-mono: "JetBrains Mono", ui-monospace, SFMono-Regular, monospace;
+  --font-sans: "Geist", ui-sans-serif, system-ui, sans-serif;
+  /* Geist Mono, which is a real improvement on what was here: --font-mono
+     named "JetBrains Mono" but nothing ever loaded it, so every font-mono
+     element has been falling through to ui-monospace all along. */
+  --font-mono: "Geist Mono", ui-monospace, SFMono-Regular, monospace;
+  /* The display face. Single weight (400) and latin-only by design — it is a
+     pixel font, so it is for the wordmark and screen titles, never body text.
+     Anything set in it must not also ask for font-bold: there is no bold to
+     find and the browser synthesises one by smearing the pixels sideways. */
+  --font-pixel: "Geist Pixel", "Geist", ui-sans-serif, system-ui, sans-serif;
 
   --radius-2xl: 1rem;
   --radius-3xl: 1.5rem;
@@ -282,6 +294,32 @@
     transform: scale(1.2);
   }
 
+  /* The large variant, for the start-point picker. The 3px rail and 11px
+     handle above are right for a scrubber you glance at inside a chip; they
+     are wrong for a control you have to aim at, which is what choosing a
+     start point is. On a phone an 11px target is a miss waiting to happen. */
+  .track-slider-lg::-webkit-slider-runnable-track {
+    height: 6px;
+  }
+  .track-slider-lg::-moz-range-track,
+  .track-slider-lg::-moz-range-progress {
+    height: 6px;
+  }
+  .track-slider-lg::-webkit-slider-thumb {
+    width: 18px;
+    height: 18px;
+    /* Centre the thumb on a 6px track: (6 - 18) / 2 */
+    margin-top: -6px;
+    /* The handle sits on an accent-filled rail, so it needs an edge of its own
+       to stay findable once it has been dragged past the fill. */
+    box-shadow: 0 1px 3px rgb(0 0 0 / 0.45);
+  }
+  .track-slider-lg::-moz-range-thumb {
+    width: 18px;
+    height: 18px;
+    box-shadow: 0 1px 3px rgb(0 0 0 / 0.45);
+  }
+
   /* The quiet variant, for the inline now-playing chip only: the handle stays
      hidden until the chip is hovered, so an idle card shows a hairline rather
      than a control. A visible handle is the right default everywhere else —
@@ -325,6 +363,37 @@
      added, swap the URL back in PinMap and drop this class. */
   .map-dark .leaflet-tile-pane {
     filter: invert(1) hue-rotate(180deg) brightness(0.92) contrast(0.88) saturate(0.7);
+  }
+
+  /* The OSM credit, shrunk to a hairline.
+
+     Leaflet's default is a white bar with 12px text that runs most of the way
+     across the bottom edge — on a 320px-tall map that is a caption competing
+     with the map. It cannot simply be deleted: the tiles are ODbL and the
+     credit is a licence condition (the "Leaflet" prefix that used to sit next
+     to it is not, and is gone — see PinMap).
+
+     So it is made small and quiet rather than hidden. It stays legible, stays
+     in the corner, and is never transparent enough to be a dark pattern: a
+     credit you cannot read is the same as no credit. */
+  .map-dark .leaflet-control-attribution {
+    padding: 1px 5px;
+    border-radius: 6px 0 0 0;
+    background: rgb(0 0 0 / 0.55);
+    font-size: 9px;
+    line-height: 1.5;
+    /* backdrop-filter, so it stays readable over pale tiles (water, parks)
+       without needing a fully opaque plate. */
+    backdrop-filter: blur(2px);
+  }
+  .map-dark .leaflet-control-attribution,
+  .map-dark .leaflet-control-attribution a {
+    color: rgb(255 255 255 / 0.55);
+  }
+  .map-dark .leaflet-control-attribution a:hover,
+  .map-dark .leaflet-control-attribution a:focus-visible {
+    color: rgb(255 255 255 / 0.9);
+    text-decoration: underline;
   }
 
   .scrollbar-hide::-webkit-scrollbar {

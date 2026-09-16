@@ -209,7 +209,7 @@ export function SearchView({ user, onUserClick, onScanClick }: SearchViewProps) 
   return (
     <div className="flex flex-col gap-5">
       <header className="flex items-center justify-between gap-4">
-        <h1 className="text-2xl font-bold tracking-tight text-fg">Explore</h1>
+        <h1 className="font-pixel text-2xl text-fg">Explore</h1>
         {onScanClick && (
           <button
             onClick={onScanClick}

@@ -28,6 +28,10 @@ export interface PinMedia {
    *  oEmbed lookup instead. */
   songTitle?: string;
   songArtist?: string;
+  /** Where the track should start, in seconds, as chosen in the picker (0022).
+   *  Absent on anything attached before that, and on anything attached without
+   *  touching the slider — both play from the beginning. */
+  songStartTime?: number;
   posterUrl?: string;
   orderIndex: number;
 }
@@ -72,7 +76,7 @@ const SPACE_SELECT = `
 const PIN_SELECT = `
   id, space_id, creator_id, latitude, longitude, name, caption, created_at,
   users!pins_creator_id_fkey(${USER_FIELDS}),
-  pin_media(id, media_type, media_url, youtube_video_id, song_title, song_artist, poster_url, order_index)
+  pin_media(id, media_type, media_url, youtube_video_id, song_title, song_artist, song_start_time, poster_url, order_index)
 `;
 
 const mapUser = (row: any): User | undefined =>
@@ -124,6 +128,7 @@ const mapPin = (row: any): Pin => ({
       youtubeVideoId: m.youtube_video_id ?? undefined,
       songTitle: m.song_title ?? undefined,
       songArtist: m.song_artist ?? undefined,
+      songStartTime: m.song_start_time ?? undefined,
       posterUrl: m.poster_url ?? undefined,
       orderIndex: m.order_index ?? 0,
     }))
@@ -248,6 +253,7 @@ export const pins = {
       youtubeVideoId?: string | null;
       songTitle?: string | null;
       songArtist?: string | null;
+      songStartTime?: number | null;
       posterUrl?: string | null;
     }>;
   }): Promise<string> {
@@ -274,6 +280,7 @@ export const pins = {
           youtube_video_id: m.youtubeVideoId ?? null,
           song_title: m.songTitle ?? null,
           song_artist: m.songArtist ?? null,
+          song_start_time: m.songStartTime ?? null,
           poster_url: m.posterUrl ?? null,
           order_index,
         }))

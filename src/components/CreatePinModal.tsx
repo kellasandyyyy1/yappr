@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { MapPin as MapPinIcon, Image as ImageIcon, Video as VideoIcon, Music, X, Loader2 } from './icons';
+import { MapPin as MapPinIcon, Image as ImageIcon, Video as VideoIcon, Music, X, Loader2, Clock } from './icons';
 import { Modal, ModalHeader, ModalBody, ModalFooter } from './Modal';
 import { PinMap, useCurrentLocation } from './PinMap';
 import { LocationSearch } from './LocationSearch';
@@ -42,6 +42,10 @@ export function CreatePinModal({ user, space, onClose, onCreated }: CreatePinMod
   const [caption, setCaption] = useState('');
   const [media, setMedia] = useState<DraftMedia[]>([]);
   const [showSongSearch, setShowSongSearch] = useState(false);
+  // The key of the attached song being re-timed, if any. The picker is the
+  // only place the start offset can be chosen, so adjusting one means
+  // reopening it against that entry rather than deleting and re-adding.
+  const [songEditKey, setSongEditKey] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   // Set when a search result is chosen, so the map recentres on it.
   const [searchCenter, setSearchCenter] = useState<[number, number] | null>(null);
@@ -58,12 +62,23 @@ export function CreatePinModal({ user, space, onClose, onCreated }: CreatePinMod
   );
 
   const addPhoto = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
+    // Every file the picker returns, not just the first. Attaching four
+    // photos to a memory used to mean four trips through the file dialog.
+    const files: File[] = e.target.files ? Array.from(e.target.files) : [];
     e.target.value = '';
-    if (!file) return;
+    if (!files.length) return;
+    // Date.now() alone collides when a whole selection arrives in one tick,
+    // and two entries sharing a key make React reuse the wrong row — remove
+    // one photo and a different one disappears from the list.
+    const stamp = Date.now();
     setMedia((prev) => [
       ...prev,
-      { key: `p${Date.now()}`, type: 'photo', file, previewUrl: URL.createObjectURL(file) },
+      ...files.map((file, i) => ({
+        key: `p${stamp}-${i}`,
+        type: 'photo' as const,
+        file,
+        previewUrl: URL.createObjectURL(file),
+      })),
     ]);
   };
 
@@ -95,6 +110,15 @@ export function CreatePinModal({ user, space, onClose, onCreated }: CreatePinMod
       return prev.filter((m) => m.key !== key);
     });
 
+  const closeSongSearch = () => {
+    setShowSongSearch(false);
+    setSongEditKey(null);
+  };
+
+  /** m:ss, matching how the picker itself writes the offset. */
+  const formatStart = (seconds: number) =>
+    `${Math.floor(seconds / 60)}:${(seconds % 60).toString().padStart(2, '0')}`;
+
   const save = async () => {
     if (!draft) return;
     setSaving(true);
@@ -106,6 +130,7 @@ export function CreatePinModal({ user, space, onClose, onCreated }: CreatePinMod
         youtubeVideoId?: string;
         songTitle?: string;
         songArtist?: string;
+        songStartTime?: number;
         posterUrl?: string;
       }> = [];
 
@@ -113,12 +138,14 @@ export function CreatePinModal({ user, space, onClose, onCreated }: CreatePinMod
         if (m.type === 'song' && m.song) {
           // The title was being dropped here: the picker knows it, the
           // database had nowhere to put it, so every pin showed "Attached
-          // song". 0021 added the columns.
+          // song". 0021 added the columns. The start offset was going the
+          // same way — chosen on the slider, discarded on save — until 0022.
           uploaded.push({
             type: 'song',
             youtubeVideoId: m.song.youtubeId,
             songTitle: m.song.title,
             songArtist: m.song.artist || undefined,
+            songStartTime: m.song.startTime || undefined,
           });
           continue;
         }
@@ -239,7 +266,7 @@ export function CreatePinModal({ user, space, onClose, onCreated }: CreatePinMod
           </div>
         ) : (
           <div className="space-y-3">
-            <input type="file" ref={photoRef} onChange={addPhoto} accept="image/*" className="hidden" />
+            <input type="file" ref={photoRef} onChange={addPhoto} accept="image/*" multiple className="hidden" />
             <input type="file" ref={videoRef} onChange={addVideo} accept={VIDEO_ACCEPT} className="hidden" />
 
             <div className="flex gap-2">
@@ -279,7 +306,23 @@ export function CreatePinModal({ user, space, onClose, onCreated }: CreatePinMod
                     )}
                     <div className="min-w-0 flex-1">
                       <p className="truncate text-sm text-fg">{m.song?.title ?? m.file?.name ?? m.type}</p>
-                      <p className="text-xs capitalize text-subtle">{m.type}</p>
+                      {/* A song says where it starts and offers to change it.
+                          Without this the slider's effect is invisible until
+                          the pin is saved and reopened. */}
+                      {m.type === 'song' && m.song ? (
+                        <button
+                          type="button"
+                          onClick={() => setSongEditKey(m.key)}
+                          className="press flex items-center gap-1 text-xs text-subtle transition-colors hover:text-accent"
+                        >
+                          <Clock size={11} />
+                          {m.song.startTime
+                            ? `Starts at ${formatStart(m.song.startTime)}`
+                            : 'Starts at the beginning'}
+                        </button>
+                      ) : (
+                        <p className="text-xs capitalize text-subtle">{m.type}</p>
+                      )}
                     </div>
                     <button
                       type="button"
@@ -328,14 +371,22 @@ export function CreatePinModal({ user, space, onClose, onCreated }: CreatePinMod
         </div>
       </ModalFooter>
 
-      {showSongSearch && (
-        <Modal onClose={() => setShowSongSearch(false)} size="lg" nested>
+      {(showSongSearch || songEditKey) && (
+        <Modal onClose={closeSongSearch} size="lg" nested>
           <div className="flex min-h-0 flex-1 flex-col p-5 sm:p-6">
             <ThemeSongSearch
-              onClose={() => setShowSongSearch(false)}
+              // Re-timing an existing entry opens the picker on that track with
+              // its current offset already loaded, so the slider starts where
+              // the song was left rather than back at 0:00.
+              initialSong={songEditKey ? media.find((m) => m.key === songEditKey)?.song : undefined}
+              onClose={closeSongSearch}
               onSelect={(song) => {
-                setMedia((prev) => [...prev, { key: `s${Date.now()}`, type: 'song', song }]);
-                setShowSongSearch(false);
+                setMedia((prev) =>
+                  songEditKey
+                    ? prev.map((m) => (m.key === songEditKey ? { ...m, song } : m))
+                    : [...prev, { key: `s${Date.now()}`, type: 'song', song }]
+                );
+                closeSongSearch();
               }}
             />
           </div>

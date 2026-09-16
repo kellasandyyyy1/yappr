@@ -8,6 +8,11 @@ import { cn } from '../lib/utils';
 import { searchSongs, SongSearchError, MIN_QUERY_LENGTH, YouTubeTrack } from '../lib/youtube';
 import { RowSkeleton } from './Skeleton';
 
+/** What the scrubber spans before the player has reported a real duration.
+ *  Only ever visible for the moment between opening a track and the embed
+ *  answering getDuration(). */
+const FALLBACK_DURATION = 300;
+
 interface ThemeSongSearchProps {
   onSelect: (song: ThemeSong) => void;
   onClose: () => void;
@@ -26,7 +31,23 @@ export function ThemeSongSearch({ onSelect, onClose, initialSong }: ThemeSongSea
   const [loadingHistory, setLoadingHistory] = useState(false);
   const [activeTab, setActiveTab] = useState<'search' | 'history'>('search');
   const [isPreviewPlaying, setIsPreviewPlaying] = useState(false);
+  // The track's real length, as the player reports it. The picker used to
+  // assume every song was five minutes long and cap the slider there, which
+  // silently made the back half of anything longer unreachable.
+  const [duration, setDuration] = useState(0);
+  // Where playback has actually reached. Deliberately separate from startTime:
+  // startTime is the choice being made and must not drift as the song plays.
+  const [playhead, setPlayhead] = useState(0);
   const previewPlayerRef = useRef<any>(null);
+
+  /** A cued player often reports 0 before it has the metadata, so this is
+   *  called from every place that might know better rather than just once. */
+  const readDuration = (player: any) => {
+    try {
+      const total = player?.getDuration?.() ?? 0;
+      if (total > 0) setDuration(total);
+    } catch { /* the embed can be torn down mid-call */ }
+  };
 
   const togglePreviewPlay = () => {
     if (!previewPlayerRef.current) return;
@@ -43,6 +64,7 @@ export function ThemeSongSearch({ onSelect, onClose, initialSong }: ThemeSongSea
 
   const onPreviewReady: YouTubeProps['onReady'] = (event) => {
     previewPlayerRef.current = event.target;
+    readDuration(event.target);
     // No seekTo here. On a freshly-cued player seekTo() starts playback (see
     // the IFrame API reference), which is why this needed an immediate
     // pauseVideo() to undo it — audible as a blip of sound on open. The start
@@ -52,9 +74,36 @@ export function ThemeSongSearch({ onSelect, onClose, initialSong }: ThemeSongSea
   };
 
   const onPreviewStateChange: YouTubeProps['onStateChange'] = (event) => {
-    if (event.data === 1) setIsPreviewPlaying(true);
-    else setIsPreviewPlaying(false);
+    readDuration(event.target);
+    if (event.data === 1) {
+      setIsPreviewPlaying(true);
+    } else {
+      setIsPreviewPlaying(false);
+      // Back to the chosen point, so the marker never lingers somewhere the
+      // song is no longer playing from.
+      setPlayhead(startTime);
+    }
   };
+
+  /**
+   * Poll the player for position while previewing.
+   *
+   * The IFrame API exposes getCurrentTime() but fires no timeupdate event, so
+   * polling is the only way to drive a playhead from it — the same reasoning,
+   * and the same 250ms, as ThemeSongCard.
+   */
+  useEffect(() => {
+    if (!isPreviewPlaying) return;
+    const id = setInterval(() => {
+      const player = previewPlayerRef.current;
+      if (!player || typeof player.getCurrentTime !== 'function') return;
+      try {
+        setPlayhead(player.getCurrentTime() ?? 0);
+        readDuration(player);
+      } catch { /* the player can be torn down between ticks */ }
+    }, 250);
+    return () => clearInterval(id);
+  }, [isPreviewPlaying]);
 
   useEffect(() => {
     const fetchHistory = async () => {
@@ -143,6 +192,24 @@ export function ThemeSongSearch({ onSelect, onClose, initialSong }: ThemeSongSea
     setPreview({ ...track, startTime: 0 });
     setStartTime(0);
     setIsPreviewPlaying(false);
+    // A new track means a new length. Carrying the old one over would show the
+    // previous song's duration against this one until the embed catches up.
+    setDuration(0);
+    setPlayhead(0);
+  };
+
+  /** The scrubber's right-hand end: the real length once known, the fallback
+   *  for the moment before that. */
+  const scrubMax = duration > 0 ? Math.floor(duration) : FALLBACK_DURATION;
+
+  /** Dragging the scrubber sets the start point, and moves a running preview
+   *  to match so you hear the spot you are pointing at. */
+  const scrubTo = (next: number) => {
+    setStartTime(next);
+    setPlayhead(next);
+    if (isPreviewPlaying) {
+      try { previewPlayerRef.current?.seekTo(next, true); } catch { /* ignore */ }
+    }
   };
 
   const handleSave = () => {
@@ -153,9 +220,12 @@ export function ThemeSongSearch({ onSelect, onClose, initialSong }: ThemeSongSea
     }
   };
 
+  /** m:ss, or --:-- for a length the player has not reported yet. Claiming
+   *  0:00 for an unknown duration reads as a real answer. */
   const formatTime = (seconds: number) => {
+    if (!Number.isFinite(seconds) || seconds < 0) return '--:--';
     const min = Math.floor(seconds / 60);
-    const sec = seconds % 60;
+    const sec = Math.floor(seconds % 60);
     return `${min}:${sec.toString().padStart(2, '0')}`;
   };
 
@@ -315,30 +385,22 @@ export function ThemeSongSearch({ onSelect, onClose, initialSong }: ThemeSongSea
                         <h3 className="truncate text-sm font-semibold leading-tight text-fg">{preview.title}</h3>
                         <p className="mt-0.5 truncate text-xs text-muted">{preview.artist}</p>
 
-                        <div className="mt-1.5 flex items-center gap-3">
-                          {/* A play glyph on cover art is ambiguous — it reads
-                              as "this is a video" as easily as "hear it". The
-                              word says which. */}
-                          <button
-                            onClick={togglePreviewPlay}
-                            className="flex items-center gap-1 text-[11px] font-medium text-muted transition-colors hover:text-fg"
-                          >
-                            {isPreviewPlaying
-                              ? <Square size={10} className="fill-current" />
-                              : <Play size={10} className="fill-current" />}
-                            {isPreviewPlaying ? 'Stop' : 'Preview'}
-                          </button>
-
-                          {results.length > 0 && (
+                        {/* The 11px "Preview" link that used to sit here is
+                            gone: playback is now the 48px button in the start
+                            block below, which is the same action at a size you
+                            can actually hit. Only the escape hatch remains. */}
+                        {results.length > 0 && (
+                          <div className="mt-1.5">
                             <button
+                              type="button"
                               onClick={() => { setPreview(null); setIsPreviewPlaying(false); }}
-                              className="flex items-center gap-1 text-[11px] font-medium text-muted transition-colors hover:text-fg"
+                              className="press flex items-center gap-1.5 rounded-lg py-1 text-xs font-medium text-muted transition-colors hover:text-fg"
                             >
-                              <RefreshCw size={10} />
+                              <RefreshCw size={12} />
                               Choose another
                             </button>
-                          )}
-                        </div>
+                          </div>
+                        )}
                       </div>
 
                       {/* The preview player: rendered, never shown. Same
@@ -355,7 +417,14 @@ export function ThemeSongSearch({ onSelect, onClose, initialSong }: ThemeSongSea
                           opts={{
                             playerVars: {
                               autoplay: 0,
-                              start: startTime,
+                              // The offset this track was opened at, not the
+                              // live one. Feeding the dragging value in here
+                              // would rewrite playerVars on every tick of the
+                              // scrubber, and react-youtube may rebuild the
+                              // iframe when its opts change — a torn-down
+                              // player mid-drag. Every move after mount goes
+                              // through seekTo() instead.
+                              start: preview.startTime,
                               controls: 0,
                               modestbranding: 1,
                               playsinline: 1,
@@ -370,38 +439,71 @@ export function ThemeSongSearch({ onSelect, onClose, initialSong }: ThemeSongSea
                       </div>
                     </div>
 
-                    {/* — Start point — */}
+                    {/* — Start point —
+
+                        A transport, not a form field. The old version was a
+                        hairline slider capped at a hard-coded 300s with an
+                        11px text link for playback: you could not reach past
+                        five minutes into a track, could not hit the handle on
+                        a phone, and could not hear what you had chosen
+                        without finding a target smaller than the cursor. */}
                     <div className="border-t border-line p-4">
-                      <div className="flex items-center justify-between gap-2">
-                        <label htmlFor="start-time" className="flex items-center gap-1.5 text-xs font-medium text-muted">
-                          <Clock size={12} />
-                          Start at
-                        </label>
-                        <span className="rounded-full bg-accent/10 px-2 py-0.5 text-xs font-semibold tabular-nums text-accent">
-                          {formatTime(startTime)}
-                        </span>
+                      <label htmlFor="start-time" className="flex items-center gap-1.5 text-xs font-medium text-muted">
+                        <Clock size={12} />
+                        Start at
+                      </label>
+
+                      <div className="mt-3 flex items-center gap-3">
+                        {/* The primary control, and sized like one. */}
+                        <button
+                          type="button"
+                          onClick={togglePreviewPlay}
+                          aria-label={isPreviewPlaying ? 'Stop preview' : 'Play from the start point'}
+                          className="press flex h-12 w-12 shrink-0 items-center justify-center rounded-full bg-accent text-white shadow-sm transition-colors hover:bg-accent-deep"
+                        >
+                          {isPreviewPlaying
+                            ? <Square size={18} className="fill-current" />
+                            : <Play size={18} className="ml-0.5 fill-current" />}
+                        </button>
+
+                        <div className="min-w-0 flex-1">
+                          <div className="relative">
+                            <input
+                              id="start-time"
+                              type="range"
+                              min="0"
+                              max={scrubMax}
+                              step="1"
+                              value={Math.min(startTime, scrubMax)}
+                              onChange={(e) => scrubTo(Number(e.target.value))}
+                              style={{ ['--fill' as string]: `${(Math.min(startTime, scrubMax) / scrubMax) * 100}%` }}
+                              className="track-slider track-slider-lg relative z-10 h-5 w-full"
+                            />
+
+                            {/* Where the song has actually reached, drawn over
+                                the rail. It only appears while previewing and
+                                never moves the handle — the handle is the
+                                choice, this is just the sound. */}
+                            {isPreviewPlaying && playhead > startTime && (
+                              <span
+                                aria-hidden="true"
+                                className="pointer-events-none absolute top-1/2 z-20 h-3 w-0.5 -translate-y-1/2 rounded-full bg-white/80"
+                                style={{ left: `${Math.min((playhead / scrubMax) * 100, 100)}%` }}
+                              />
+                            )}
+                          </div>
+
+                          <div className="mt-1 flex items-center justify-between text-[11px] font-medium tabular-nums">
+                            <span className="text-accent">{formatTime(startTime)}</span>
+                            <span className="text-subtle">
+                              {duration > 0 ? formatTime(duration) : '--:--'}
+                            </span>
+                          </div>
+                        </div>
                       </div>
 
-                      {/* The slider had py-4 inside a p-8 box: roughly 48px of
-                          air around a 2px control, which is what made this
-                          section look empty next to the result above it. */}
-                      <input
-                        id="start-time"
-                        type="range"
-                        min="0"
-                        max="300"
-                        step="1"
-                        value={startTime}
-                        onChange={(e) => {
-                          setStartTime(Number(e.target.value));
-                          setIsPreviewPlaying(false); // Reset preview when switching time
-                        }}
-                        style={{ ['--fill' as string]: `${(startTime / 300) * 100}%` }}
-                        className="track-slider mt-3 h-1 w-full"
-                      />
-
                       <p className="mt-2 text-[11px] leading-snug text-subtle">
-                        Drag to choose where the song starts, then hit Preview to hear it.
+                        Drag to choose where the song starts — press play to hear it from there.
                       </p>
                     </div>
 
@@ -447,6 +549,11 @@ export function ThemeSongSearch({ onSelect, onClose, initialSong }: ThemeSongSea
                     onClick={() => {
                       setPreview(item);
                       setStartTime(item.startTime);
+                      // Same reset as picking a fresh result — a remembered
+                      // offset says nothing about how long the track is.
+                      setDuration(0);
+                      setPlayhead(item.startTime);
+                      setIsPreviewPlaying(false);
                       setActiveTab('search');
                     }}
                     className="group flex w-full items-center gap-3 rounded-2xl p-2 text-left transition-colors hover:bg-surface-2 active:scale-[0.99]"

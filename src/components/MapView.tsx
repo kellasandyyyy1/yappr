@@ -1,8 +1,9 @@
 import React, { useEffect, useState, useCallback, useMemo } from 'react';
-import { Plus, Loader2, AlertCircle, Trash2, Users as UsersIcon, MapPin as MapPinIcon } from './icons';
+import { Plus, Loader2, AlertCircle, Trash2, Users as UsersIcon, MapPin as MapPinIcon, UserPlus } from './icons';
 import { PinMap, useCurrentLocation, spaceColor } from './PinMap';
 import { CreatePinModal } from './CreatePinModal';
 import { CreateSpaceModal } from './CreateSpaceModal';
+import { SpaceMembersModal } from './SpaceMembersModal';
 import { LocationSearch } from './LocationSearch';
 import { VideoPlayer } from './VideoPlayer';
 import { ThemeSongCard } from './ThemeSongCard';
@@ -42,6 +43,10 @@ export function MapView({ user, onUserClick }: MapViewProps) {
   const [error, setError] = useState<string | null>(null);
   const [activeSpaceId, setActiveSpaceId] = useState<string | null>(null); // null = all
   const [creatingSpace, setCreatingSpace] = useState(false);
+  // The space whose membership is being managed. Distinct from viewingMembers
+  // below: that one is the read-only "who else sees this pin?" list nested in
+  // the pin detail, this one is the owner adding people after the fact.
+  const [managingSpace, setManagingSpace] = useState<MapSpace | null>(null);
   const [pinningTo, setPinningTo] = useState<MapSpace | null>(null);
   const [openPin, setOpenPin] = useState<Pin | null>(null);
   const [resolved, setResolved] = useState<PinMedia[] | null>(null);
@@ -216,7 +221,7 @@ export function MapView({ user, onUserClick }: MapViewProps) {
     <div className="flex min-h-0 flex-1 flex-col gap-3 py-4">
       <div className="flex items-center justify-between gap-3">
         <div className="min-w-0">
-          <h1 className="text-lg font-bold text-fg">Map</h1>
+          <h1 className="font-pixel text-lg text-fg">Map</h1>
           <p className="truncate text-xs text-muted">
             {/* pins is a separate request from spaces. Gating a pins-derived
                 number on whether SPACES arrived is what let this state
@@ -236,6 +241,20 @@ export function MapView({ user, onUserClick }: MapViewProps) {
             <UsersIcon size={15} />
             <span className="hidden sm:inline">New space</span>
           </button>
+          {/* Only with a space selected, because "add someone" has to be to
+              something — on "All" there is no space to add them to. The pin
+              composer's member list answers who is in a space; this is where
+              you change it. */}
+          {activeSpace && (
+            <button
+              onClick={() => setManagingSpace(activeSpace)}
+              title={`People in ${activeSpace.name}`}
+              className="btn-secondary flex h-10 items-center gap-2 px-3 text-sm"
+            >
+              <UserPlus size={15} />
+              <span className="hidden sm:inline">People</span>
+            </button>
+          )}
           <button
             onClick={() => setPinningTo(activeSpace ?? spaces?.[0] ?? null)}
             disabled={!spaces?.length}
@@ -373,6 +392,20 @@ export function MapView({ user, onUserClick }: MapViewProps) {
       </AnimatePresence>
 
       <AnimatePresence>
+        {managingSpace && (
+          <SpaceMembersModal
+            user={user}
+            space={managingSpace}
+            onClose={() => setManagingSpace(null)}
+            // Reload rather than patching state: the new members have to reach
+            // the pin attribution rows and the avatar stacks, which read off
+            // the space objects this refetches.
+            onChanged={load}
+          />
+        )}
+      </AnimatePresence>
+
+      <AnimatePresence>
         {pinningTo && (
           <CreatePinModal
             user={user}
@@ -506,7 +539,11 @@ export function MapView({ user, onUserClick }: MapViewProps) {
                                 ?? 'Attached song',
                               artist: m.songArtist ?? songNames[m.youtubeVideoId!]?.artist ?? '',
                               coverUrl: `https://i.ytimg.com/vi/${m.youtubeVideoId}/mqdefault.jpg`,
-                              startTime: 0,
+                              // Whatever the composer chose on the "Start at"
+                              // slider. Null for pins made before 0022 and for
+                              // anyone who left the slider alone; both mean
+                              // "from the beginning".
+                              startTime: m.songStartTime ?? 0,
                             }}
                           />
                         </div>

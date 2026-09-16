@@ -12,8 +12,8 @@
 -- Wrapped in a transaction: if any statement fails, nothing is applied and
 -- the project is left exactly as it was.
 --
--- Concatenated in order: 0001_schema.sql, 0002_triggers.sql, 0003_rls.sql, 0004_fix_insert_returning_visibility.sql, 0005_fix_membership_escalation.sql, 0006_require_aal2.sql, 0007_consent_timestamp_integrity.sql, 0008_harden_new_functions.sql, 0009_profile_on_signup.sql
--- Generated: 2026-08-16
+-- Concatenated in order: 0001_schema.sql, 0002_triggers.sql, 0003_rls.sql, 0004_fix_insert_returning_visibility.sql, 0005_fix_membership_escalation.sql, 0006_require_aal2.sql, 0007_consent_timestamp_integrity.sql, 0008_harden_new_functions.sql, 0009_profile_on_signup.sql, 0010_username_availability.sql, 0011_enable_realtime.sql, 0012_storage_policies.sql, 0013_video.sql, 0014_video_storage_policies.sql, 0015_memory_pins.sql, 0016_fix_pin_insert_returning.sql, 0017_map_spaces.sql, 0018_location_search_history.sql, 0019_pins_membership_only.sql, 0020_pin_place_name.sql, 0021_pin_song_title.sql, 0022_pin_song_start_time.sql
+-- Generated: 2026-09-16
 -- ============================================================================
 
 begin;
@@ -1596,5 +1596,1213 @@ create trigger on_auth_user_created
   after insert on auth.users
   for each row
   execute function handle_new_user();
+
+
+-- ==========================================================================
+-- SOURCE: 0010_username_availability.sql
+-- ==========================================================================
+
+-- =============================================================================
+-- Let the signup form check whether a username is free
+-- =============================================================================
+-- THE PROBLEM
+--   Signup writes the `public.users` row from a trigger inside the same
+--   transaction as the auth account, so a duplicate username rolls the entire
+--   signup back. GoTrue reports that as HTTP 500 "Database error saving new
+--   user" — no error code, no column, nothing pointing at the username. The UI
+--   could only fall back to "Something went wrong. Please try again."
+--
+--   The obvious client-side fix — count matching rows before submitting —
+--   does not work. At that moment the caller is still `anon`, and
+--   `users_select` is `to authenticated`, so RLS hides every row and the count
+--   is always zero. The check silently passes and the signup fails anyway.
+--   (Verified: an existing username reported as available.)
+--
+-- THE FIX
+--   A SECURITY DEFINER function that answers one boolean question and is
+--   callable by `anon`. It runs as the owner, so RLS does not hide the row.
+--
+-- WHAT THIS DOES AND DOES NOT EXPOSE
+--   It returns a boolean and nothing else — no id, no email, no profile data.
+--   It does confirm whether a given handle is taken, which is inherently public
+--   in this app: usernames appear on every profile, in search results and in
+--   @mentions. There is nothing here that visiting /u/<name> would not reveal.
+--
+--   Contrast with email: `email_not_confirmed` vs `invalid_credentials` is
+--   carefully managed precisely because email existence is NOT public. No
+--   equivalent function exists for email, and none should.
+--
+-- Idempotent — safe to run repeatedly.
+-- =============================================================================
+
+
+create or replace function username_available(candidate text)
+returns boolean
+language sql
+stable
+security definer
+set search_path = public, pg_temp
+as $$
+  select
+    -- Same rule as users_username_check. Rejecting the format here too means
+    -- the caller gets one answer for "unusable", whatever the reason.
+    candidate ~ '^[a-z0-9_]{3,30}$'
+    and not exists (select 1 from public.users u where u.username = candidate);
+$$;
+
+comment on function username_available(text) is
+  'True when the handle is well-formed and unclaimed. Callable pre-signup, so anon needs EXECUTE.';
+
+-- Name PUBLIC and both roles explicitly. Supabase layers per-role grants on top
+-- of PostgreSQL's default PUBLIC grant, so a narrower statement is silently
+-- satisfied by whichever grant it missed — the trap documented in 0008.
+revoke execute on function username_available(text) from public, anon, authenticated;
+grant  execute on function username_available(text) to anon, authenticated;
+
+
+-- ==========================================================================
+-- SOURCE: 0011_enable_realtime.sql
+-- ==========================================================================
+
+-- =============================================================================
+-- Publish the tables the app subscribes to
+-- =============================================================================
+-- The `supabase_realtime` publication was EMPTY. Every `postgres_changes`
+-- subscription in src/lib/db.ts therefore reached SUBSCRIBED and then received
+-- nothing, forever — the worst possible failure shape, because the client
+-- reports success and simply stays silent.
+--
+-- What was silently dead: new messages in an open chat, inbox reordering, the
+-- notification bell, feed inserts, like and comment counters, live comment
+-- threads, presence and profile edits.
+--
+-- (`supabase_realtime_messages_publication`, holding `messages_2026_08_*`, is
+-- Realtime's own internal partitioned broadcast storage. It is unrelated to
+-- `public.messages` and is easy to mistake for it.)
+--
+-- RLS STILL APPLIES. Realtime evaluates the same policies per subscriber before
+-- delivering a row, so publishing a table does not widen who can see what.
+--
+-- Idempotent — safe to run repeatedly.
+-- =============================================================================
+
+
+do $$
+declare
+  t text;
+begin
+  foreach t in array array['users', 'posts', 'comments', 'messages', 'conversations', 'notifications']
+  loop
+    if not exists (
+      select 1 from pg_publication_tables
+      where pubname = 'supabase_realtime' and schemaname = 'public' and tablename = t
+    ) then
+      execute format('alter publication supabase_realtime add table public.%I', t);
+    end if;
+  end loop;
+end
+$$;
+
+-- --- REPLICA IDENTITY ---------------------------------------------------------
+-- Postgres logs only the primary key of a deleted row by default, so a DELETE
+-- arrives with everything except its id stripped out. Any subscription that
+-- FILTERS on a non-key column therefore never matches a delete, and the row
+-- stays on screen until a manual refresh.
+--
+-- That affects exactly these four:
+--   messages       DELETE filtered on conversation_id
+--   comments       event '*' filtered on post_id
+--   posts          event '*' filtered on user_id
+--   notifications  event '*' filtered on recipient_id
+--
+-- FULL logs the whole old row, which costs WAL volume. Accepted here because
+-- these are small rows and a delete that never propagates is a visible bug.
+--
+-- `users` and `conversations` are left at DEFAULT: both are subscribed to for
+-- UPDATE only, and an update always carries the complete new row.
+alter table public.messages      replica identity full;
+alter table public.comments      replica identity full;
+alter table public.posts         replica identity full;
+alter table public.notifications replica identity full;
+
+
+-- ==========================================================================
+-- SOURCE: 0012_storage_policies.sql
+-- ==========================================================================
+
+-- =============================================================================
+-- Storage: access policies for the avatars / posts / chat buckets
+-- =============================================================================
+-- The buckets themselves are created by
+-- scripts/migrate/create-storage-buckets.ts (they are not SQL objects). This
+-- file grants access to them.
+--
+-- Until both existed, EVERY upload in the app failed at once — post images,
+-- comment attachments, chat photos and voice notes, group photos, avatars —
+-- because there was nowhere to write and, once there was, no policy allowing
+-- the write. `storage.objects` has RLS on by default with no policies, which
+-- denies everything.
+--
+-- ── WHY THE THREE BUCKETS DIFFER ─────────────────────────────────────────────
+-- The object paths the app actually writes are not uniform, and the policies
+-- have to match what the code does rather than an idealised layout:
+--
+--   avatars   <uid>/<timestamp>                     — always owner-foldered
+--   posts     <uid>/<timestamp>-<n>-<filename>      — post images
+--             <uid>/<timestamp>-voice.webm          — voice posts
+--             groups/<conversationId>-<timestamp>   — group photos
+--             comments/<postId>/<uid>-<timestamp>   — comment attachments
+--   chat      <conversationId>/<uid>-<timestamp>    — always conversation-foldered
+--
+-- So `avatars` and `chat` can be constrained by their first path segment.
+-- `posts` cannot: two of its four shapes do not begin with the uploader's id.
+-- It is therefore gated on `owner` for mutation instead, which Supabase sets
+-- from auth.uid() on insert. The trade is that any signed-in user may add an
+-- object under any path in `posts`; bucket-level MIME and size limits bound the
+-- damage, and nothing can be overwritten or deleted by a non-owner.
+--
+-- Idempotent — safe to run repeatedly.
+-- =============================================================================
+
+
+-- --- avatars: public read, owner-foldered writes ------------------------------
+
+drop policy if exists avatars_read on storage.objects;
+create policy avatars_read on storage.objects
+  for select using (bucket_id = 'avatars');
+
+drop policy if exists avatars_insert_own on storage.objects;
+create policy avatars_insert_own on storage.objects
+  for insert to authenticated
+  with check (
+    bucket_id = 'avatars'
+    and (storage.foldername(name))[1] = auth.uid()::text
+  );
+
+drop policy if exists avatars_update_own on storage.objects;
+create policy avatars_update_own on storage.objects
+  for update to authenticated
+  using (bucket_id = 'avatars' and owner = auth.uid())
+  with check (bucket_id = 'avatars' and owner = auth.uid());
+
+drop policy if exists avatars_delete_own on storage.objects;
+create policy avatars_delete_own on storage.objects
+  for delete to authenticated
+  using (bucket_id = 'avatars' and owner = auth.uid());
+
+-- --- posts: public read, any signed-in user may add, owner may change ---------
+-- See the note above on why this is not owner-foldered.
+
+drop policy if exists posts_read on storage.objects;
+create policy posts_read on storage.objects
+  for select using (bucket_id = 'posts');
+
+drop policy if exists posts_insert_authenticated on storage.objects;
+create policy posts_insert_authenticated on storage.objects
+  for insert to authenticated
+  with check (bucket_id = 'posts');
+
+drop policy if exists posts_update_own on storage.objects;
+create policy posts_update_own on storage.objects
+  for update to authenticated
+  using (bucket_id = 'posts' and owner = auth.uid())
+  with check (bucket_id = 'posts' and owner = auth.uid());
+
+drop policy if exists posts_delete_own on storage.objects;
+create policy posts_delete_own on storage.objects
+  for delete to authenticated
+  using (bucket_id = 'posts' and owner = auth.uid());
+
+-- --- chat: private, readable only by members of that conversation -------------
+-- The first path segment is the conversation id, so membership is checkable
+-- directly. The regex guard matters: a path whose first segment is not a UUID
+-- would make the ::uuid cast raise, and an error inside a policy fails the
+-- whole statement rather than just denying the row.
+
+drop policy if exists chat_read_members on storage.objects;
+create policy chat_read_members on storage.objects
+  for select to authenticated
+  using (
+    bucket_id = 'chat'
+    and (storage.foldername(name))[1] ~ '^[0-9a-fA-F-]{36}$'
+    and is_conversation_member(((storage.foldername(name))[1])::uuid)
+  );
+
+drop policy if exists chat_insert_members on storage.objects;
+create policy chat_insert_members on storage.objects
+  for insert to authenticated
+  with check (
+    bucket_id = 'chat'
+    and (storage.foldername(name))[1] ~ '^[0-9a-fA-F-]{36}$'
+    and is_conversation_member(((storage.foldername(name))[1])::uuid)
+  );
+
+drop policy if exists chat_delete_own on storage.objects;
+create policy chat_delete_own on storage.objects
+  for delete to authenticated
+  using (bucket_id = 'chat' and owner = auth.uid());
+
+
+-- ==========================================================================
+-- SOURCE: 0013_video.sql
+-- ==========================================================================
+
+-- =============================================================================
+-- Video: enum values and columns for posts and messages
+-- =============================================================================
+-- Verified against the live project before writing this
+-- (scripts/migrate/diagnose-video-readiness.ts):
+--
+--   posts.type      is enum post_type     — rejects 'video'
+--   messages.type   is enum message_type  — rejects 'video'
+--   posts.video_url                       — does not exist
+--   messages.video_url                    — does not exist
+--
+-- So nothing about the existing image/voice support carries over; a video
+-- cannot even be represented until this runs.
+--
+-- ── WHY A SEPARATE COLUMN RATHER THAN REUSING image_url ──────────────────────
+-- A video needs two URLs, not one: the file, and a poster frame to show before
+-- playback starts. Overloading image_url would leave no place for the poster,
+-- and would make every existing `type = 'image'` query ambiguous.
+--
+-- ── WHY THE ENUM CHANGE IS OUTSIDE THE TRANSACTION ──────────────────────────
+-- A value added by ALTER TYPE ... ADD VALUE cannot be used by other statements
+-- until the adding transaction commits. Keeping the enum changes outside the
+-- begin/commit below means this file can be run top to bottom in one go.
+--
+-- Idempotent — safe to run repeatedly.
+-- =============================================================================
+
+alter type post_type add value if not exists 'video';
+alter type message_type add value if not exists 'video';
+
+
+-- --- posts -------------------------------------------------------------------
+alter table public.posts add column if not exists video_url text;
+alter table public.posts add column if not exists video_poster_url text;
+
+comment on column public.posts.video_url is
+  'Public URL in the post-videos bucket. Null unless type = ''video''.';
+comment on column public.posts.video_poster_url is
+  'Public URL of the first-frame poster, generated client-side at upload. '
+  'Shown before playback so the feed never renders a black rectangle.';
+
+-- --- messages ----------------------------------------------------------------
+alter table public.messages add column if not exists video_url text;
+alter table public.messages add column if not exists video_poster_url text;
+
+comment on column public.messages.video_url is
+  'supabase://chat-videos/<conversationId>/... — the bucket is private, so this '
+  'is the scheme form and readers mint a signed URL via resolveStorageUrl().';
+comment on column public.messages.video_poster_url is
+  'Poster frame for the message video, in the same private bucket.';
+
+-- --- realtime ----------------------------------------------------------------
+-- posts and messages are already in the supabase_realtime publication with
+-- REPLICA IDENTITY FULL (0011); new columns are carried automatically, so
+-- nothing to add here. Recorded so the next reader does not go looking.
+
+
+-- ==========================================================================
+-- SOURCE: 0014_video_storage_policies.sql
+-- ==========================================================================
+
+-- =============================================================================
+-- Storage: access policies for the post-videos / chat-videos buckets
+-- =============================================================================
+-- The buckets are created by scripts/migrate/create-video-buckets.ts (buckets
+-- are not SQL objects). This file grants access to them.
+--
+-- ── WHY TWO BUCKETS RATHER THAN ONE "videos" BUCKET ─────────────────────────
+-- The two audiences are incompatible inside one bucket. Post videos must be
+-- publicly readable — the feed renders them for anyone allowed to see the post,
+-- and signing every URL would mean a round trip per video. Chat videos must be
+-- readable only by members of that conversation.
+--
+-- A PUBLIC bucket bypasses RLS for reads entirely: Supabase serves
+-- /object/public/<bucket>/<path> with no auth at all. So a single public bucket
+-- would expose every chat video to anyone who guessed a path, no matter what
+-- SELECT policy were written. Splitting is not tidiness — it is the only way to
+-- have both semantics.
+--
+-- ── PATHS ────────────────────────────────────────────────────────────────────
+--   post-videos   <uid>/<timestamp>.<ext>              — and .poster.jpg
+--   chat-videos   <conversationId>/<uid>-<timestamp>   — and .poster.jpg
+--
+-- post-videos is owner-foldered, which the `posts` bucket could not be: every
+-- path here is written by the uploader for their own post, so unlike `posts`
+-- there is no groups/ or comments/ shape to accommodate. That makes it strictly
+-- tighter than the bucket it sits beside.
+--
+-- Idempotent — safe to run repeatedly.
+-- =============================================================================
+
+
+-- --- post-videos: public read, owner-foldered writes -------------------------
+
+drop policy if exists post_videos_read on storage.objects;
+create policy post_videos_read on storage.objects
+  for select using (bucket_id = 'post-videos');
+
+drop policy if exists post_videos_insert_own on storage.objects;
+create policy post_videos_insert_own on storage.objects
+  for insert to authenticated
+  with check (
+    bucket_id = 'post-videos'
+    and (storage.foldername(name))[1] = auth.uid()::text
+  );
+
+drop policy if exists post_videos_update_own on storage.objects;
+create policy post_videos_update_own on storage.objects
+  for update to authenticated
+  using (bucket_id = 'post-videos' and owner = auth.uid())
+  with check (bucket_id = 'post-videos' and owner = auth.uid());
+
+drop policy if exists post_videos_delete_own on storage.objects;
+create policy post_videos_delete_own on storage.objects
+  for delete to authenticated
+  using (bucket_id = 'post-videos' and owner = auth.uid());
+
+-- --- chat-videos: private, members of that conversation only -----------------
+-- Mirrors the `chat` bucket exactly, including the regex guard: a first path
+-- segment that is not a UUID would make the ::uuid cast raise, and an error
+-- raised inside a policy fails the whole statement rather than denying the row.
+
+drop policy if exists chat_videos_read_members on storage.objects;
+create policy chat_videos_read_members on storage.objects
+  for select to authenticated
+  using (
+    bucket_id = 'chat-videos'
+    and (storage.foldername(name))[1] ~ '^[0-9a-fA-F-]{36}$'
+    and is_conversation_member(((storage.foldername(name))[1])::uuid)
+  );
+
+drop policy if exists chat_videos_insert_members on storage.objects;
+create policy chat_videos_insert_members on storage.objects
+  for insert to authenticated
+  with check (
+    bucket_id = 'chat-videos'
+    and (storage.foldername(name))[1] ~ '^[0-9a-fA-F-]{36}$'
+    and is_conversation_member(((storage.foldername(name))[1])::uuid)
+  );
+
+drop policy if exists chat_videos_delete_own on storage.objects;
+create policy chat_videos_delete_own on storage.objects
+  for delete to authenticated
+  using (bucket_id = 'chat-videos' and owner = auth.uid());
+
+
+-- ==========================================================================
+-- SOURCE: 0015_memory_pins.sql
+-- ==========================================================================
+
+-- =============================================================================
+-- Memory Pins: a map location carrying media, shared with people or groups
+-- =============================================================================
+-- Three tables:
+--
+--   pins         the location and its caption
+--   pin_media    photos / videos / songs attached to a pin, ordered
+--   pin_shares   who a pin is shared with — a person OR a conversation
+--
+-- ── PINS ARE PRIVATE BY DEFAULT ──────────────────────────────────────────────
+-- Unlike posts, which have a public/followers/private visibility column, a pin
+-- is visible to its creator and to nobody else until it is explicitly shared.
+-- There is no "public" state at all. That is why the SELECT policy is a
+-- whitelist (creator OR an explicit share) rather than a filter over a
+-- visibility enum: a bug in a filter shows too much, a bug in a whitelist shows
+-- too little.
+--
+-- ── WHY pin_shares HAS TWO NULLABLE TARGETS ─────────────────────────────────
+-- A share points at exactly one of a user or a conversation, enforced by a
+-- check constraint rather than by convention. Two columns with a constraint
+-- beats a (target_type, target_id) pair because the foreign keys stay real:
+-- deleting a user or a conversation takes its shares with it.
+--
+-- Idempotent — safe to run repeatedly.
+-- =============================================================================
+
+
+-- --- media kinds -------------------------------------------------------------
+do $$
+begin
+  if not exists (select 1 from pg_type where typname = 'pin_media_type') then
+    create type pin_media_type as enum ('photo', 'video', 'song');
+  end if;
+end $$;
+
+-- --- pins --------------------------------------------------------------------
+create table if not exists public.pins (
+  id          uuid primary key default gen_random_uuid(),
+  creator_id  uuid not null references public.users(id) on delete cascade,
+  -- numeric, not float: a pin is a place, and binary floating point should not
+  -- quietly move it. 9 significant digits is ~0.1mm at the equator.
+  latitude    numeric(11, 8) not null check (latitude between -90 and 90),
+  longitude   numeric(11, 8) not null check (longitude between -180 and 180),
+  caption     text check (caption is null or char_length(caption) <= 500),
+  created_at  timestamptz not null default now()
+);
+
+create index if not exists pins_creator_idx on public.pins (creator_id, created_at desc);
+
+-- --- pin_media ---------------------------------------------------------------
+create table if not exists public.pin_media (
+  id                uuid primary key default gen_random_uuid(),
+  pin_id            uuid not null references public.pins(id) on delete cascade,
+  media_type        pin_media_type not null,
+  -- Storage URL for a photo or video; null for a song.
+  media_url         text,
+  -- YouTube id for a song; null otherwise. Reuses the existing player.
+  youtube_video_id  text,
+  poster_url        text,
+  order_index       int not null default 0,
+  created_at        timestamptz not null default now(),
+
+  -- A song needs a youtube id and a photo/video needs a url. Without this a row
+  -- can exist that renders as nothing at all.
+  constraint pin_media_has_a_source check (
+    (media_type = 'song' and youtube_video_id is not null)
+    or (media_type in ('photo', 'video') and media_url is not null)
+  )
+);
+
+create index if not exists pin_media_pin_idx on public.pin_media (pin_id, order_index);
+
+-- --- pin_shares --------------------------------------------------------------
+create table if not exists public.pin_shares (
+  id                  uuid primary key default gen_random_uuid(),
+  pin_id              uuid not null references public.pins(id) on delete cascade,
+  shared_with_user_id uuid references public.users(id) on delete cascade,
+  conversation_id     uuid references public.conversations(id) on delete cascade,
+  created_at          timestamptz not null default now(),
+
+  -- Exactly one target. Neither would be a share with nobody; both would make
+  -- "who is this shared with" ambiguous.
+  constraint pin_shares_one_target check (
+    (shared_with_user_id is not null and conversation_id is null)
+    or (shared_with_user_id is null and conversation_id is not null)
+  )
+);
+
+-- Sharing the same pin with the same target twice is a no-op, not a new row.
+create unique index if not exists pin_shares_user_uniq
+  on public.pin_shares (pin_id, shared_with_user_id)
+  where shared_with_user_id is not null;
+create unique index if not exists pin_shares_conversation_uniq
+  on public.pin_shares (pin_id, conversation_id)
+  where conversation_id is not null;
+
+create index if not exists pin_shares_user_idx on public.pin_shares (shared_with_user_id);
+create index if not exists pin_shares_conversation_idx on public.pin_shares (conversation_id);
+
+-- =============================================================================
+-- RLS
+-- =============================================================================
+alter table public.pins       enable row level security;
+alter table public.pin_media  enable row level security;
+alter table public.pin_shares enable row level security;
+
+/**
+ * Can the caller see this pin?
+ *
+ * SECURITY DEFINER so that reading pin_shares from inside a pins policy does
+ * not itself require a pin_shares policy to pass — that recursion is how
+ * "permission denied" appears on a table whose policy looks correct.
+ *
+ * search_path is pinned: a SECURITY DEFINER function without it can be
+ * hijacked by a caller-controlled search_path.
+ */
+create or replace function public.can_view_pin(pin uuid)
+returns boolean
+language sql
+stable
+security definer
+set search_path = public, pg_temp
+as $$
+  select exists (
+    select 1 from public.pins p
+     where p.id = pin
+       and p.creator_id = (select auth.uid())
+  )
+  or exists (
+    select 1 from public.pin_shares s
+     where s.pin_id = pin
+       and (
+         s.shared_with_user_id = (select auth.uid())
+         or (s.conversation_id is not null and public.is_conversation_member(s.conversation_id))
+       )
+  );
+$$;
+
+revoke all on function public.can_view_pin(uuid) from public;
+grant execute on function public.can_view_pin(uuid) to authenticated;
+
+-- --- pins --------------------------------------------------------------------
+drop policy if exists pins_select_visible on public.pins;
+create policy pins_select_visible on public.pins
+  for select to authenticated
+  using (public.can_view_pin(id));
+
+drop policy if exists pins_insert_own on public.pins;
+create policy pins_insert_own on public.pins
+  for insert to authenticated
+  with check (creator_id = (select auth.uid()));
+
+drop policy if exists pins_update_own on public.pins;
+create policy pins_update_own on public.pins
+  for update to authenticated
+  using (creator_id = (select auth.uid()))
+  with check (creator_id = (select auth.uid()));
+
+drop policy if exists pins_delete_own on public.pins;
+create policy pins_delete_own on public.pins
+  for delete to authenticated
+  using (creator_id = (select auth.uid()));
+
+-- --- pin_media ---------------------------------------------------------------
+-- Readable by anyone who can read the pin; writable only by its creator. A
+-- recipient with write access could add media to someone else's memory.
+drop policy if exists pin_media_select_visible on public.pin_media;
+create policy pin_media_select_visible on public.pin_media
+  for select to authenticated
+  using (public.can_view_pin(pin_id));
+
+drop policy if exists pin_media_write_own on public.pin_media;
+create policy pin_media_write_own on public.pin_media
+  for all to authenticated
+  using (exists (select 1 from public.pins p where p.id = pin_id and p.creator_id = (select auth.uid())))
+  with check (exists (select 1 from public.pins p where p.id = pin_id and p.creator_id = (select auth.uid())));
+
+-- --- pin_shares --------------------------------------------------------------
+-- The creator manages shares. A recipient may read the share rows for a pin
+-- they can already see, so the UI can say who else it went to.
+drop policy if exists pin_shares_select_visible on public.pin_shares;
+create policy pin_shares_select_visible on public.pin_shares
+  for select to authenticated
+  using (public.can_view_pin(pin_id));
+
+drop policy if exists pin_shares_write_own on public.pin_shares;
+create policy pin_shares_write_own on public.pin_shares
+  for all to authenticated
+  using (exists (select 1 from public.pins p where p.id = pin_id and p.creator_id = (select auth.uid())))
+  with check (
+    exists (select 1 from public.pins p where p.id = pin_id and p.creator_id = (select auth.uid()))
+    -- A pin may only be shared into a conversation the sharer is actually in.
+    -- Without this, anyone could push a pin into any group by id.
+    and (conversation_id is null or public.is_conversation_member(conversation_id))
+  );
+
+
+-- ==========================================================================
+-- SOURCE: 0016_fix_pin_insert_returning.sql
+-- ==========================================================================
+
+-- =============================================================================
+-- Fix: INSERT ... RETURNING on `pins` blocked by its own SELECT policy
+-- =============================================================================
+-- The same trap 0004 fixed for `conversations`, walked into again on `pins`.
+--
+-- SYMPTOM
+--   insert into pins (...) returning id
+--     → ERROR 42501: new row violates row-level security policy for table "pins"
+--
+--   Narrowed down by scripts/migrate/diagnose-pins-rls.ts: SELECT on an
+--   existing pin worked, pin_media and pin_shares inserts worked, and
+--   can_view_pin() returned true when called directly. Only the pins INSERT
+--   failed, which rules out grants, the WITH CHECK, and the helper itself.
+--
+-- CAUSE
+--   Postgres evaluates the SELECT policy against the new row when a statement
+--   uses RETURNING — and PostgREST always uses RETURNING when the client calls
+--   .select() after .insert(), which src/lib/pins.ts does.
+--
+--   pins_select_visible called can_view_pin(id), which runs
+--   `select ... from pins where id = $1`. That function is STABLE, so it sees
+--   the snapshot as of statement start; the row being inserted is not in it.
+--   The lookup returns false and the pin is judged invisible to the very
+--   person who just created it.
+--
+-- FIX
+--   Test the row's own column instead of re-querying the table. creator_id is
+--   present on the candidate row, so no snapshot is involved. The share branch
+--   still goes through can_view_pin(), which reads pin_shares — a different
+--   table, already committed, and therefore safe to look up.
+--
+--   The OR does not depend on short-circuiting: if can_view_pin(id) is
+--   evaluated anyway it simply returns false, and the OR is already true.
+--
+-- can_view_pin() is unchanged. It is still correct and still needed for the
+-- pin_media and pin_shares policies, where the pins row was committed by an
+-- earlier statement and is genuinely visible.
+--
+-- Idempotent — safe to run repeatedly.
+-- =============================================================================
+
+
+drop policy if exists pins_select_visible on public.pins;
+create policy pins_select_visible on public.pins
+  for select to authenticated
+  using (
+    -- Own column: available on the new row during INSERT ... RETURNING.
+    creator_id = (select auth.uid())
+    -- Different table, already committed: safe to look up.
+    or public.can_view_pin(id)
+  );
+
+
+-- ==========================================================================
+-- SOURCE: 0017_map_spaces.sql
+-- ==========================================================================
+
+-- =============================================================================
+-- Map Spaces: persistent shared maps, replacing per-pin sharing
+-- =============================================================================
+-- A pin now belongs to a SPACE, and a space has members. Membership is the
+-- whole visibility model: every member sees every pin in the space, and
+-- everyone can keep adding to it over time. That replaces pin_shares, where a
+-- pin was individually addressed to people and nothing accumulated.
+--
+-- ── SAFE TO DROP AND REBUILD ────────────────────────────────────────────────
+-- Checked against the live project before writing this: pins, pin_media and
+-- pin_shares all held 0 rows. The feature has never carried real data — its
+-- insert path was broken until 0016 — so there is nothing to migrate and no
+-- back-compat shim to keep.
+--
+-- ── INSERT ... RETURNING ────────────────────────────────────────────────────
+-- Every SELECT policy below leads with a column of the row itself. Postgres
+-- evaluates the SELECT policy against the new row whenever a statement uses
+-- RETURNING, and PostgREST always uses RETURNING when the client calls
+-- .select() after .insert(). A policy that re-queries its own table through a
+-- STABLE function cannot see that row and denies it — which is what 0004 fixed
+-- for conversations and 0016 for pins. Two rows here would hit it otherwise:
+--
+--   map_spaces        the creator has no membership row yet at RETURNING time
+--   map_space_members the first member row cannot see itself
+--
+-- Both lead with created_by / user_id for exactly that reason.
+--
+-- Idempotent — safe to run repeatedly.
+-- =============================================================================
+
+
+-- --- retire the individual-sharing model -------------------------------------
+-- pin_shares is gone; membership answers what it used to. can_view_pin() goes
+-- with it — its whole body was a share lookup.
+--
+-- ORDER MATTERS HERE. A function cannot be dropped while a policy still
+-- references it:
+--
+--   ERROR 2BP01: cannot drop function can_view_pin(uuid) because other objects
+--   depend on it — policy pins_select_visible, policy pin_media_select_visible
+--
+-- Both are recreated further down against is_space_member(), so dropping them
+-- up front costs nothing. DROP ... CASCADE would also clear the error, but it
+-- would remove whatever else happened to depend on the function without
+-- saying so; naming them keeps that explicit.
+drop policy if exists pins_select_visible on public.pins;
+drop policy if exists pin_media_select_visible on public.pin_media;
+
+-- Dropping the table takes its own policies with it. Dropping them by name
+-- first would break re-runs: `drop policy if exists … on public.pin_shares`
+-- raises "relation does not exist" once the table is gone, and IF EXISTS on
+-- the policy does not cover a missing table.
+drop table if exists public.pin_shares;
+
+drop function if exists public.can_view_pin(uuid);
+
+-- --- roles -------------------------------------------------------------------
+do $$
+begin
+  if not exists (select 1 from pg_type where typname = 'map_space_role') then
+    create type map_space_role as enum ('owner', 'member');
+  end if;
+end $$;
+
+-- --- map_spaces --------------------------------------------------------------
+create table if not exists public.map_spaces (
+  id          uuid primary key default gen_random_uuid(),
+  name        text not null check (char_length(trim(name)) between 1 and 80),
+  created_by  uuid not null references public.users(id) on delete cascade,
+  created_at  timestamptz not null default now()
+);
+
+create index if not exists map_spaces_creator_idx on public.map_spaces (created_by);
+
+-- --- map_space_members -------------------------------------------------------
+create table if not exists public.map_space_members (
+  id         uuid primary key default gen_random_uuid(),
+  space_id   uuid not null references public.map_spaces(id) on delete cascade,
+  user_id    uuid not null references public.users(id) on delete cascade,
+  role       map_space_role not null default 'member',
+  joined_at  timestamptz not null default now(),
+  unique (space_id, user_id)
+);
+
+create index if not exists map_space_members_user_idx on public.map_space_members (user_id);
+create index if not exists map_space_members_space_idx on public.map_space_members (space_id);
+
+-- --- pins now belong to a space ----------------------------------------------
+-- The table is empty, so the column can be added NOT NULL outright rather than
+-- backfilled behind a default that would then have to be dropped.
+alter table public.pins add column if not exists space_id uuid;
+
+do $$
+begin
+  if not exists (
+    select 1 from pg_constraint where conname = 'pins_space_id_fkey'
+  ) then
+    alter table public.pins
+      add constraint pins_space_id_fkey
+      foreign key (space_id) references public.map_spaces(id) on delete cascade;
+  end if;
+end $$;
+
+alter table public.pins alter column space_id set not null;
+
+create index if not exists pins_space_idx on public.pins (space_id, created_at desc);
+
+-- =============================================================================
+-- Helpers
+-- =============================================================================
+-- SECURITY DEFINER so that reading map_space_members from inside a pins policy
+-- does not itself need a map_space_members policy to pass; that recursion is
+-- how "permission denied" appears on a table whose policy looks correct.
+-- search_path is pinned — a SECURITY DEFINER function without it can be
+-- hijacked through a caller-controlled search_path.
+
+create or replace function public.is_space_member(space uuid)
+returns boolean
+language sql
+stable
+security definer
+set search_path = public, pg_temp
+as $$
+  select exists (
+    select 1 from public.map_space_members m
+     where m.space_id = space
+       and m.user_id = (select auth.uid())
+  );
+$$;
+
+/**
+ * Ownership is map_spaces.created_by, not the member row's role.
+ *
+ * Deliberate: deriving it from the members table creates a bootstrap problem —
+ * the owner must insert their own first membership row before any policy that
+ * consults that table can say they are the owner. created_by exists from the
+ * moment the space does. The `role` column is still stored and shown, it just
+ * is not what authority is decided by.
+ */
+create or replace function public.is_space_owner(space uuid)
+returns boolean
+language sql
+stable
+security definer
+set search_path = public, pg_temp
+as $$
+  select exists (
+    select 1 from public.map_spaces s
+     where s.id = space
+       and s.created_by = (select auth.uid())
+  );
+$$;
+
+-- `from public, anon, authenticated`, not `from public` alone.
+--
+-- This project has already been caught by the narrow form once: Supabase's
+-- default privileges layer per-role grants on top of PostgreSQL's PUBLIC
+-- grant, so revoking only from PUBLIC leaves anon and authenticated holding
+-- their own grants and the revoke silently does nothing. Every other hardened
+-- function here (0006, 0008, 0009, 0010) names all three for that reason.
+revoke execute on function public.is_space_member(uuid) from public, anon, authenticated;
+revoke execute on function public.is_space_owner(uuid) from public, anon, authenticated;
+grant execute on function public.is_space_member(uuid) to authenticated;
+grant execute on function public.is_space_owner(uuid) to authenticated;
+
+-- =============================================================================
+-- RLS
+-- =============================================================================
+alter table public.map_spaces        enable row level security;
+alter table public.map_space_members enable row level security;
+
+-- --- map_spaces --------------------------------------------------------------
+drop policy if exists map_spaces_select_member on public.map_spaces;
+create policy map_spaces_select_member on public.map_spaces
+  for select to authenticated
+  using (
+    -- Own column: available on the new row during INSERT ... RETURNING, when
+    -- no membership row exists yet.
+    created_by = (select auth.uid())
+    -- Different table, already committed.
+    or public.is_space_member(id)
+  );
+
+drop policy if exists map_spaces_insert_own on public.map_spaces;
+create policy map_spaces_insert_own on public.map_spaces
+  for insert to authenticated
+  with check (created_by = (select auth.uid()));
+
+drop policy if exists map_spaces_update_owner on public.map_spaces;
+create policy map_spaces_update_owner on public.map_spaces
+  for update to authenticated
+  using (created_by = (select auth.uid()))
+  with check (created_by = (select auth.uid()));
+
+drop policy if exists map_spaces_delete_owner on public.map_spaces;
+create policy map_spaces_delete_owner on public.map_spaces
+  for delete to authenticated
+  using (created_by = (select auth.uid()));
+
+-- --- map_space_members -------------------------------------------------------
+drop policy if exists map_space_members_select on public.map_space_members;
+create policy map_space_members_select on public.map_space_members
+  for select to authenticated
+  using (
+    -- Own column first: lets the first member row see itself on RETURNING.
+    user_id = (select auth.uid())
+    or public.is_space_member(space_id)
+  );
+
+-- Only the owner adds people. The owner's own first row is covered by the same
+-- check, because ownership comes from map_spaces.created_by rather than from a
+-- membership row that does not exist yet.
+drop policy if exists map_space_members_insert_owner on public.map_space_members;
+create policy map_space_members_insert_owner on public.map_space_members
+  for insert to authenticated
+  with check (public.is_space_owner(space_id));
+
+-- The owner removes anyone; a member removes only themselves, which is how
+-- leaving works.
+drop policy if exists map_space_members_delete on public.map_space_members;
+create policy map_space_members_delete on public.map_space_members
+  for delete to authenticated
+  using (
+    public.is_space_owner(space_id)
+    or user_id = (select auth.uid())
+  );
+
+-- --- pins --------------------------------------------------------------------
+drop policy if exists pins_select_visible on public.pins;
+create policy pins_select_visible on public.pins
+  for select to authenticated
+  using (
+    creator_id = (select auth.uid())
+    or public.is_space_member(space_id)
+  );
+
+drop policy if exists pins_insert_own on public.pins;
+create policy pins_insert_own on public.pins
+  for insert to authenticated
+  with check (
+    creator_id = (select auth.uid())
+    -- A pin can only be dropped into a space the author belongs to. Without
+    -- this, anyone could write into any space by id.
+    and public.is_space_member(space_id)
+  );
+
+drop policy if exists pins_update_own on public.pins;
+create policy pins_update_own on public.pins
+  for update to authenticated
+  using (creator_id = (select auth.uid()))
+  with check (creator_id = (select auth.uid()) and public.is_space_member(space_id));
+
+-- A member removes their own pin; the space owner can remove any pin in it.
+drop policy if exists pins_delete_own on public.pins;
+create policy pins_delete_own on public.pins
+  for delete to authenticated
+  using (
+    creator_id = (select auth.uid())
+    or public.is_space_owner(space_id)
+  );
+
+-- --- pin_media ---------------------------------------------------------------
+-- Visibility follows the pin's space; only the pin's author attaches media.
+drop policy if exists pin_media_select_visible on public.pin_media;
+create policy pin_media_select_visible on public.pin_media
+  for select to authenticated
+  using (
+    exists (
+      select 1 from public.pins p
+       where p.id = pin_id
+         and (p.creator_id = (select auth.uid()) or public.is_space_member(p.space_id))
+    )
+  );
+
+drop policy if exists pin_media_write_own on public.pin_media;
+create policy pin_media_write_own on public.pin_media
+  for all to authenticated
+  using (exists (select 1 from public.pins p where p.id = pin_id and p.creator_id = (select auth.uid())))
+  with check (exists (select 1 from public.pins p where p.id = pin_id and p.creator_id = (select auth.uid())));
+
+
+-- ==========================================================================
+-- SOURCE: 0018_location_search_history.sql
+-- ==========================================================================
+
+-- =============================================================================
+-- Location search history
+-- =============================================================================
+-- What a user picked from the geocoder, so the search box can offer their
+-- recent places before they type anything.
+--
+-- ── DEDUPE ──────────────────────────────────────────────────────────────────
+-- Searching "london" five times is one history entry with a fresh timestamp,
+-- not five rows. Enforced by a unique index on (user_id, query_text) so the
+-- client can upsert; doing it with a read-then-write would race with itself
+-- across two tabs.
+--
+-- query_text is stored already normalised — trimmed and lower-cased by the
+-- client — because the uniqueness has to be on the same value the lookup uses.
+-- The display name comes back from the geocoder anyway, so nothing is lost.
+--
+-- ── PRIVATE, FULL STOP ──────────────────────────────────────────────────────
+-- Where someone has searched is among the more revealing things this app
+-- stores. There is no shared or public state: every policy is `user_id =
+-- auth.uid()`, with no exception for followers, space members or anyone else.
+--
+-- Idempotent — safe to run repeatedly.
+-- =============================================================================
+
+
+create table if not exists public.location_search_history (
+  id          uuid primary key default gen_random_uuid(),
+  user_id     uuid not null references public.users(id) on delete cascade,
+  -- Normalised: trimmed, lower-cased. Matches what the unique index dedupes on.
+  query_text  text not null check (char_length(query_text) between 1 and 200),
+  -- The place that was chosen, so a history row can recentre the map without
+  -- going back to the geocoder.
+  latitude    numeric(11, 8) not null check (latitude between -90 and 90),
+  longitude   numeric(11, 8) not null check (longitude between -180 and 180),
+  -- What to show in the list. Nominatim's display_name, kept as returned.
+  label       text,
+  searched_at timestamptz not null default now()
+);
+
+create unique index if not exists location_search_history_uniq
+  on public.location_search_history (user_id, query_text);
+
+-- The list is always "this user's, most recent first".
+create index if not exists location_search_history_recent_idx
+  on public.location_search_history (user_id, searched_at desc);
+
+-- =============================================================================
+-- RLS
+-- =============================================================================
+alter table public.location_search_history enable row level security;
+
+-- Own column on every policy, so INSERT ... RETURNING — which PostgREST uses
+-- for the upsert below — can see the row it just wrote. A policy that had to
+-- re-query this table would deny its own insert; that trap has already cost
+-- this project three migrations (0004, 0016, and the design of 0017).
+drop policy if exists location_search_history_select_own on public.location_search_history;
+create policy location_search_history_select_own on public.location_search_history
+  for select to authenticated
+  using (user_id = (select auth.uid()));
+
+drop policy if exists location_search_history_insert_own on public.location_search_history;
+create policy location_search_history_insert_own on public.location_search_history
+  for insert to authenticated
+  with check (user_id = (select auth.uid()));
+
+-- Needed as well as INSERT: an upsert that collides runs an UPDATE, and
+-- without this policy the second search for the same place fails where the
+-- first succeeded.
+drop policy if exists location_search_history_update_own on public.location_search_history;
+create policy location_search_history_update_own on public.location_search_history
+  for update to authenticated
+  using (user_id = (select auth.uid()))
+  with check (user_id = (select auth.uid()));
+
+drop policy if exists location_search_history_delete_own on public.location_search_history;
+create policy location_search_history_delete_own on public.location_search_history
+  for delete to authenticated
+  using (user_id = (select auth.uid()));
+
+
+-- ==========================================================================
+-- SOURCE: 0019_pins_membership_only.sql
+-- ==========================================================================
+
+-- =============================================================================
+-- Fix: a pin stayed visible to its author after they left the space
+-- =============================================================================
+-- Caught by test-map-spaces.ts:
+--
+--   PASS  bob can leave voluntarily
+--   FAIL  once out, bob sees nothing in it — 1 pin(s) still visible
+--
+-- The pin he could still see was his own. 0017's SELECT policies read
+--
+--   creator_id = auth.uid() or is_space_member(space_id)
+--
+-- so authorship granted permanent read access, surviving departure from the
+-- space. The pin itself correctly stays behind — leaving is not a retraction —
+-- which means a former member kept a window into a space's content.
+--
+-- That contradicts the model this feature is built on, and the requirement as
+-- written: a user can read pins in a space only if they are listed in
+-- map_space_members for that space_id. Membership is the whole visibility
+-- model, or it is not the model.
+--
+-- ── WHY THE CREATOR CLAUSE WAS THERE, AND WHY IT IS NOT NEEDED ──────────────
+-- It was defensive, carried over from the INSERT ... RETURNING trap that bit
+-- pins twice (0016) and shaped 0017's other policies. It does not apply here.
+--
+-- That trap only bites when a policy re-queries THE TABLE BEING INSERTED INTO
+-- through a STABLE function, which cannot see the new row. pins_select_visible
+-- calls is_space_member(space_id), which reads map_space_members — a different
+-- table, already committed. space_id is present on the candidate row. So the
+-- author's own INSERT ... RETURNING still passes on membership alone, and the
+-- clause bought nothing but the leak.
+--
+-- Same reasoning for pin_media: its policy reads `pins`, committed by an
+-- earlier statement.
+--
+-- ── WHAT IS DELIBERATELY LEFT ALONE ─────────────────────────────────────────
+-- pins_delete_own still allows `creator_id = auth.uid()`. Being able to remove
+-- something you wrote is a different question from being able to read a space
+-- you have left, and removing your own content is defensible. It also requires
+-- knowing the pin's id, which a former member can no longer obtain by reading.
+--
+-- Idempotent — safe to run repeatedly.
+-- =============================================================================
+
+
+drop policy if exists pins_select_visible on public.pins;
+create policy pins_select_visible on public.pins
+  for select to authenticated
+  using (public.is_space_member(space_id));
+
+drop policy if exists pin_media_select_visible on public.pin_media;
+create policy pin_media_select_visible on public.pin_media
+  for select to authenticated
+  using (
+    exists (
+      select 1 from public.pins p
+       where p.id = pin_id
+         and public.is_space_member(p.space_id)
+    )
+  );
+
+
+-- ==========================================================================
+-- SOURCE: 0020_pin_place_name.sql
+-- ==========================================================================
+
+-- =============================================================================
+-- A pin gets a name of its own
+-- =============================================================================
+-- The detail view led with latitude and longitude, which is what the pin is
+-- but not what it means. "Where we watched the fireworks" is the title; the
+-- coordinates are a footnote.
+--
+-- `caption` already existed and stays as the note — a few words about the
+-- memory. This adds `name`, the headline. Two fields rather than one because
+-- they are read differently: the name is scanned in a list, the note is read
+-- once the pin is open.
+--
+-- Nullable: pins created before this have no name, and the UI falls back to
+-- the caption and then to a plain "Pin". Making it NOT NULL would need a
+-- backfill of invented titles, which is worse than an honest absence.
+--
+-- Idempotent — safe to run repeatedly.
+-- =============================================================================
+
+
+alter table public.pins add column if not exists name text;
+
+do $$
+begin
+  if not exists (
+    select 1 from pg_constraint where conname = 'pins_name_length'
+  ) then
+    alter table public.pins
+      add constraint pins_name_length
+      check (name is null or char_length(trim(name)) between 1 and 80);
+  end if;
+end $$;
+
+comment on column public.pins.name is
+  'Short place name — the pin''s title, e.g. "Where we watched the fireworks". '
+  'Null on pins created before 0020; the UI falls back to caption, then "Pin".';
+
+comment on column public.pins.caption is
+  'A few words about the memory. Shown under the name, above the media.';
+
+
+-- ==========================================================================
+-- SOURCE: 0021_pin_song_title.sql
+-- ==========================================================================
+
+-- Songs attached to a pin remember what they are.
+--
+-- pin_media stored youtube_video_id and nothing else, so the detail card had
+-- no name to print and said "Attached song" for every track. The title was
+-- never missing — the song picker has it, and the composer threw it away on
+-- the way to the database.
+--
+-- Denormalised on purpose. The alternative is asking YouTube for the title
+-- every time a pin is opened, which is a network round-trip per song on a
+-- read path, and a track that is later deleted or made private would lose its
+-- name retroactively. What was attached is a fact about the memory; it should
+-- not change because something moved on YouTube.
+
+alter table public.pin_media
+  add column if not exists song_title  text,
+  add column if not exists song_artist text;
+
+-- Nullable, and no backfill. Every row written before this migration has no
+-- title and there is nothing local to derive one from; the card falls back to
+-- "Attached song" for those, and the app fills them in from YouTube's oEmbed
+-- endpoint as they are opened. Making these NOT NULL would have meant
+-- inventing titles for existing rows.
+alter table public.pin_media drop constraint if exists pin_media_song_title_length;
+alter table public.pin_media
+  add constraint pin_media_song_title_length
+  check (song_title is null or char_length(song_title) between 1 and 200);
+
+alter table public.pin_media drop constraint if exists pin_media_song_artist_length;
+alter table public.pin_media
+  add constraint pin_media_song_artist_length
+  check (song_artist is null or char_length(song_artist) between 1 and 200);
+
+-- No RLS change: these are columns on a table whose policies already gate
+-- access by space membership, and column-level grants are not in play here.
+
+
+-- ==========================================================================
+-- SOURCE: 0022_pin_song_start_time.sql
+-- ==========================================================================
+
+-- A song attached to a pin remembers where it should start.
+--
+-- The picker has offered a "Start at" slider since it was written, and the
+-- profile theme song has always honoured it. The pin composer read the same
+-- value off the same component and then dropped it: pin_media had no column
+-- for it, so every attached song played from 0:00 and the detail card
+-- hardcoded a start of 0 to match. Choosing the drop of a track and getting
+-- its intro instead is the whole of the bug.
+--
+-- Same denormalising rationale as 0021: this is a fact about the memory, not
+-- about the video, and it should not require a round-trip to render.
+
+alter table public.pin_media
+  add column if not exists song_start_time integer;
+
+-- Nullable, no backfill. Rows written before this migration made no choice —
+-- that is different from having chosen 0:00, though both play from the start.
+-- Leaving them null keeps the distinction available and avoids claiming an
+-- intent nobody expressed.
+alter table public.pin_media drop constraint if exists pin_media_song_start_time_range;
+alter table public.pin_media
+  add constraint pin_media_song_start_time_range
+  -- Upper bound is a sanity guard, not a product rule: 24h is longer than any
+  -- track and still rejects a millisecond value pasted into a seconds column,
+  -- which is the mistake actually worth catching.
+  check (song_start_time is null or song_start_time between 0 and 86400);
+
+-- No RLS change: pin_media's policies already gate access by space
+-- membership, and this adds no new way to reach a row.
 
 commit;

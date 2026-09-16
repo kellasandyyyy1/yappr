@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
-import { MapContainer, TileLayer, Marker, useMapEvents, useMap } from 'react-leaflet';
+import { MapContainer, TileLayer, Marker, useMapEvents, useMap, AttributionControl } from 'react-leaflet';
 import L from 'leaflet';
 import 'leaflet/dist/leaflet.css';
 import { cn } from '../lib/utils';
@@ -281,7 +281,23 @@ export function PinMap({
         // Leaflet paints its own light background behind the tiles, which
         // flashes white while they load.
         style={{ background: '#0d0d12' }}
+        // Replaced below by one with no "Leaflet" prefix. The default control
+        // is added at construction, so it has to be refused here rather than
+        // reconfigured afterwards.
+        attributionControl={false}
       >
+        {/* The attribution, minus Leaflet's own branding.
+
+            "© OpenStreetMap contributors" stays, and is not ours to drop: the
+            tiles are ODbL-licensed and crediting them is a condition of the
+            licence, not a courtesy. The "Leaflet" prefix is different — that
+            is the library advertising itself, it carries no licence weight,
+            and prefix={false} is the supported way to decline it.
+
+            What remains is styled down to a hairline in .map-dark (index.css)
+            so it reads as a credit rather than a caption. */}
+        <AttributionControl position="bottomright" prefix={false} />
+
         {/* OpenStreetMap's own tiles. CARTO's dark basemap was used here
             first, on the understanding it needed no key — it now watermarks
             unauthenticated tiles with a diagonal "API KEY REQUIRED", which is

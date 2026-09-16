@@ -1800,7 +1800,7 @@ export function ChatView({ user, onProfileClick, onUserClick, onChatOpenChange, 
               <ChevronLeft size={22} />
             </button>
           )}
-          <h1 className="truncate text-2xl font-bold tracking-tight text-fg">Messages</h1>
+          <h1 className="truncate font-pixel text-2xl text-fg">Messages</h1>
         </div>
 
         {/* Both actions carry a visible text label — the two bare icons were

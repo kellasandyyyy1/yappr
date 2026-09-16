@@ -59,7 +59,11 @@ export function Logo({ size = 'md', iconOnly = false, className }: LogoProps) {
         draggable={false}
       />
       {!iconOnly && (
-        <span className={cn('brand-wordmark font-extrabold tracking-tight', s.text)}>
+        // font-extrabold and tracking-tight are gone with the switch to Geist
+        // Pixel: the face ships one weight, so extrabold only got a synthetic
+        // smear, and negative tracking closes up letterforms that are already
+        // drawn on a fixed grid. The gradient is untouched.
+        <span className={cn('brand-wordmark font-pixel', s.text)}>
           yappr
         </span>
       )}

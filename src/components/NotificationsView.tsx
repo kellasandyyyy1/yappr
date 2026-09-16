@@ -124,7 +124,7 @@ export function NotificationsView({ user, onProfileClick, onUserClick, onPostCli
               <ChevronLeft size={22} />
             </button>
           )}
-          <h1 className="truncate text-2xl font-bold tracking-tight text-fg">Notifications</h1>
+          <h1 className="truncate font-pixel text-2xl text-fg">Notifications</h1>
         </div>
 
         <button

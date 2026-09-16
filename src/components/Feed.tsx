@@ -437,7 +437,7 @@ export function Feed({ user, onNewPost, onProfileClick, onUserClick, onShowComme
   return (
     <div className="flex flex-col gap-4">
       <header className="mb-2 flex items-center justify-between gap-4">
-        <h1 className="text-2xl font-bold tracking-tight text-fg">Feed</h1>
+        <h1 className="font-pixel text-2xl text-fg">Feed</h1>
         <button
           onClick={onProfileClick}
           className="press flex items-center gap-2.5 rounded-full py-1 pl-1 pr-3 transition-colors duration-100 hover:bg-surface-2"
