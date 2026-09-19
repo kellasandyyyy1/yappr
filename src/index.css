@@ -157,6 +157,36 @@
     @apply block text-[11px] font-semibold uppercase tracking-wider text-muted mb-2;
   }
 
+  /**
+   * A control that fades in on hover — and is simply always there on anything
+   * that cannot hover.
+   *
+   * Gated on the hover MEDIA FEATURE rather than a width breakpoint, which is
+   * the trap this replaces. `sm:opacity-0 sm:group-hover:opacity-100` reads as
+   * "hidden on desktop only", but sm: is 640px and a tablet is wider than that
+   * while still having no pointer to hover with — so a delete button written
+   * that way is invisible AND unreachable on every touch device except a
+   * phone. `(hover: hover) and (pointer: fine)` asks the real question: is
+   * there a mouse?
+   *
+   * Put `group` on the row and this on the control. Keyboard focus reveals it
+   * too, or it would be unreachable by tab as well.
+   */
+  .hover-reveal {
+    opacity: 1;
+  }
+
+  @media (hover: hover) and (pointer: fine) {
+    .hover-reveal {
+      opacity: 0;
+      transition: opacity 150ms;
+    }
+    .group:hover .hover-reveal,
+    .hover-reveal:focus-visible {
+      opacity: 1;
+    }
+  }
+
   /* Press feedback — the one micro-interaction kept on every control. */
   .press {
     @apply transition-transform duration-100 active:scale-[0.97];

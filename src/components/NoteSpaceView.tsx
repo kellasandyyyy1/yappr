@@ -175,8 +175,11 @@ function NoteRow({
         <button
           type="button"
           onClick={() => onRemove(note)}
-          aria-label="Delete"
-          className="mt-0.5 shrink-0 rounded-full p-1.5 text-subtle opacity-0 transition-opacity hover:bg-surface-2 hover:text-danger focus-visible:opacity-100 group-hover:opacity-100"
+          aria-label={`Delete "${note.content.slice(0, 40)}"`}
+          // hover-reveal, not opacity-0 + group-hover: on a phone or a tablet
+          // there is no hover to reveal it with, and the button was simply
+          // invisible. See the note in index.css.
+          className="hover-reveal mt-0.5 shrink-0 rounded-full p-1.5 text-subtle transition-colors hover:bg-surface-2 hover:text-danger"
         >
           <Trash2 size={14} />
         </button>
