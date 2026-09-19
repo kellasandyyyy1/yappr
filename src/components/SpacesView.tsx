@@ -33,9 +33,11 @@ interface SpacesViewProps {
  * not look like the same one: deleting takes the space away from everybody,
  * leaving takes you out of a space that carries on.
  *
- * Visible on hover and on keyboard focus, and ALWAYS visible on touch, where
- * there is no hover to reveal it. `group-hover` alone would have made this
- * unreachable on a phone.
+ * Visible on hover and on keyboard focus, and ALWAYS visible on anything
+ * without a mouse — see .hover-reveal in index.css. This first shipped gated
+ * on `sm:`, which was wrong: a tablet is wider than 640px and still has no
+ * pointer to hover with, so the control was invisible on exactly the devices
+ * that most need it.
  */
 function RemoveButton({
   isOwner, name, onClick,
@@ -51,9 +53,8 @@ function RemoveButton({
       aria-label={isOwner ? `Delete ${name}` : `Leave ${name}`}
       title={isOwner ? 'Delete this space' : 'Leave this space'}
       className={cn(
-        'shrink-0 rounded-full p-2 text-subtle transition-colors',
-        'hover:bg-surface-3 hover:text-danger focus-visible:opacity-100',
-        'opacity-100 sm:opacity-0 sm:group-hover:opacity-100'
+        'hover-reveal shrink-0 rounded-full p-2 text-subtle transition-colors',
+        'hover:bg-surface-3 hover:text-danger'
       )}
     >
       {isOwner ? <Trash2 size={15} /> : <LogOut size={15} />}

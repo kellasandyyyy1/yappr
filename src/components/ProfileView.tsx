@@ -954,7 +954,11 @@ export function ProfileView({ user: currentUser, profileUserId, onLogout, onBack
                       setConfirmDelete(post.id);
                     }}
                     aria-label="Delete post"
-                    className="absolute bottom-2 right-2 flex h-9 w-9 items-center justify-center rounded-full bg-black/70 text-danger opacity-0 transition-opacity duration-100 focus-visible:opacity-100 group-hover:opacity-100"
+                    // hover-reveal rather than opacity-0 + group-hover: on a
+                    // touch device there is no hover, so this was a delete
+                    // control that could never be seen on the devices most of
+                    // these posts are read on.
+                    className="hover-reveal absolute bottom-2 right-2 flex h-9 w-9 items-center justify-center rounded-full bg-black/70 text-danger transition-colors duration-100"
                   >
                     <Trash2 size={15} />
                   </button>
