@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { Plus, Loader2, MapPin, Notebook, Check, X } from './icons';
+import { Plus, Loader2, MapPin, Notebook, Check, X, Trash2, LogOut } from './icons';
 import { AvatarStack } from './AvatarStack';
 import { useToast } from './ToastContext';
 import { spaces as mapSpacesApi } from '../lib/pins';
@@ -8,6 +8,8 @@ import { noteSpaces as noteSpacesApi } from '../lib/notes';
 import type { NoteSpace } from '../lib/notes';
 import { notifications as notificationsApi } from '../lib/db';
 import { CATEGORY_META, CategoryIcon } from './noteCategories';
+import { ConfirmDialog } from './Modal';
+import { AnimatePresence } from 'motion/react';
 import { CreateSpaceModal } from './CreateSpaceModal';
 import { CreateNoteSpaceModal } from './CreateNoteSpaceModal';
 import { cn, describeError, formatTimeAgo } from '../lib/utils';
@@ -21,6 +23,42 @@ interface SpacesViewProps {
    *  layout the map needs and which this hub deliberately does not replicate. */
   onOpenMapSpace: (spaceId: string) => void;
   onOpenNoteSpace: (space: NoteSpace) => void;
+}
+
+/**
+ * The trailing control on a space row: delete it, or leave it.
+ *
+ * Which one depends on ownership, and the icon says which — a bin for the
+ * owner, a door for everyone else. They are genuinely different acts and must
+ * not look like the same one: deleting takes the space away from everybody,
+ * leaving takes you out of a space that carries on.
+ *
+ * Visible on hover and on keyboard focus, and ALWAYS visible on touch, where
+ * there is no hover to reveal it. `group-hover` alone would have made this
+ * unreachable on a phone.
+ */
+function RemoveButton({
+  isOwner, name, onClick,
+}: {
+  isOwner: boolean;
+  name: string;
+  onClick: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      aria-label={isOwner ? `Delete ${name}` : `Leave ${name}`}
+      title={isOwner ? 'Delete this space' : 'Leave this space'}
+      className={cn(
+        'shrink-0 rounded-full p-2 text-subtle transition-colors',
+        'hover:bg-surface-3 hover:text-danger focus-visible:opacity-100',
+        'opacity-100 sm:opacity-0 sm:group-hover:opacity-100'
+      )}
+    >
+      {isOwner ? <Trash2 size={15} /> : <LogOut size={15} />}
+    </button>
+  );
 }
 
 /**
@@ -47,6 +85,21 @@ export function SpacesView({ user, onOpenMapSpace, onOpenNoteSpace }: SpacesView
   // The invite being answered, so its two buttons can show it without
   // disabling every other invite on screen.
   const [answering, setAnswering] = useState<string | null>(null);
+  /**
+   * The row whose removal is being confirmed.
+   *
+   * `action` is decided by ownership, not offered as a choice: the owner
+   * deletes the space for everyone, anyone else leaves it and the space
+   * carries on without them. Both are RLS-enforced — a member who somehow
+   * called delete would simply affect zero rows — so this decides what to SAY,
+   * and the database decides what may happen.
+   */
+  const [confirming, setConfirming] = useState<
+    | { kind: 'map'; action: 'delete' | 'leave'; id: string; name: string }
+    | { kind: 'notes'; action: 'delete' | 'leave'; id: string; name: string }
+    | null
+  >(null);
+  const [removing, setRemoving] = useState(false);
   const { toast } = useToast();
 
   const load = useCallback(async () => {
@@ -111,6 +164,46 @@ export function SpacesView({ user, onOpenMapSpace, onOpenNoteSpace }: SpacesView
       toast(describeError(err), 'error');
     } finally {
       setAnswering(null);
+    }
+  };
+
+  /**
+   * Delete a space, or leave it — whichever the row offered.
+   *
+   * Deleting a map space cascades to its pins and their media; deleting a
+   * notes space cascades to its notes. That is the schema's ON DELETE CASCADE
+   * doing it, in one statement, rather than the client walking children — so
+   * there is no half-deleted state to recover from if this fails partway,
+   * because it cannot fail partway.
+   *
+   * The list is reloaded rather than patched. A delete removes rows other
+   * people can see too, and the reload is one query — patching local state
+   * would be guessing at what the database now contains.
+   */
+  const confirmRemoval = async () => {
+    if (!confirming) return;
+    setRemoving(true);
+    try {
+      if (confirming.kind === 'map') {
+        if (confirming.action === 'delete') await mapSpacesApi.remove(confirming.id);
+        else await mapSpacesApi.removeMember(confirming.id, user.uid);
+      } else {
+        if (confirming.action === 'delete') await noteSpacesApi.remove(confirming.id);
+        else await noteSpacesApi.leave(confirming.id, user.uid);
+      }
+      toast(
+        confirming.action === 'delete'
+          ? `"${confirming.name}" deleted`
+          : `Left "${confirming.name}"`,
+        'success'
+      );
+      setConfirming(null);
+      await load();
+    } catch (err) {
+      console.error('Error removing space:', err);
+      toast(describeError(err), 'error');
+    } finally {
+      setRemoving(false);
     }
   };
 
@@ -239,11 +332,18 @@ export function SpacesView({ user, onOpenMapSpace, onOpenNoteSpace }: SpacesView
         <ul className="space-y-2">
           {showMaps &&
             (mapSpaces ?? []).map((space) => (
-              <li key={`map-${space.id}`}>
+              // The row is a <div> with the open action as a button inside it,
+              // not a button wrapping everything. A <button> inside a <button>
+              // is invalid HTML, and browsers resolve it by dropping the inner
+              // one — so the remove control would render and simply never fire.
+              <li
+                key={`map-${space.id}`}
+                className="group flex items-center gap-1 rounded-2xl border border-line bg-surface-2/40 pr-1 transition-colors hover:bg-surface-2"
+              >
                 <button
                   type="button"
                   onClick={() => onOpenMapSpace(space.id)}
-                  className="flex w-full items-center gap-3 rounded-2xl border border-line bg-surface-2/40 p-3 text-left transition-colors hover:bg-surface-2"
+                  className="flex min-w-0 flex-1 items-center gap-3 p-3 text-left"
                 >
                   {/* The same ring as the note categories. A map row sitting
                       beside seven outlined circles in a filled rounded square
@@ -264,6 +364,18 @@ export function SpacesView({ user, onOpenMapSpace, onOpenNoteSpace }: SpacesView
                   </span>
                   <AvatarStack users={space.members.map((m) => m.user)} max={3} size="xs" />
                 </button>
+                <RemoveButton
+                  isOwner={space.createdBy === user.uid}
+                  name={space.name}
+                  onClick={() =>
+                    setConfirming({
+                      kind: 'map',
+                      action: space.createdBy === user.uid ? 'delete' : 'leave',
+                      id: space.id,
+                      name: space.name,
+                    })
+                  }
+                />
               </li>
             ))}
 
@@ -272,15 +384,18 @@ export function SpacesView({ user, onOpenMapSpace, onOpenNoteSpace }: SpacesView
               const accepted = space.members.filter((m) => m.status === 'accepted');
               const pending = space.members.filter((m) => m.status === 'pending');
               return (
-                <li key={`notes-${space.id}`}>
+                <li
+                  key={`notes-${space.id}`}
+                  className="group flex items-center gap-1 rounded-2xl border border-line bg-surface-2/40 pr-1 transition-colors hover:bg-surface-2"
+                >
                   <button
                     type="button"
                     onClick={() => onOpenNoteSpace(space)}
-                    className="flex w-full items-center gap-3 rounded-2xl border border-line bg-surface-2/40 p-3 text-left transition-colors hover:bg-surface-2"
+                    className="flex min-w-0 flex-1 items-center gap-3 p-3 text-left"
                   >
-                    {/* The category icon and tint, not a generic notes glyph.
-                        Same job the MapPin does for map spaces: tell you what
-                        a row is before you read its name. */}
+                    {/* The category icon, not a generic notes glyph. Same job
+                        the MapPin does for map spaces: tell you what a row is
+                        before you read its name. */}
                     <CategoryIcon category={space.category} compact />
                     <span className="min-w-0 flex-1">
                       <span className="block truncate text-sm font-medium text-fg">{space.name}</span>
@@ -292,6 +407,18 @@ export function SpacesView({ user, onOpenMapSpace, onOpenNoteSpace }: SpacesView
                     </span>
                     <AvatarStack users={accepted.map((m) => m.user)} max={3} size="xs" />
                   </button>
+                  <RemoveButton
+                    isOwner={space.createdBy === user.uid}
+                    name={space.name}
+                    onClick={() =>
+                      setConfirming({
+                        kind: 'notes',
+                        action: space.createdBy === user.uid ? 'delete' : 'leave',
+                        id: space.id,
+                        name: space.name,
+                      })
+                    }
+                  />
                 </li>
               );
             })}
@@ -381,6 +508,38 @@ export function SpacesView({ user, onOpenMapSpace, onOpenNoteSpace }: SpacesView
           }}
         />
       )}
+
+      {/* The description says what actually goes, in the words of the thing
+          being deleted — "every pin in it" and "every note in it" rather than
+          a generic "and all its contents". It is the only warning there is:
+          ON DELETE CASCADE takes the children with it and nothing here is
+          recoverable afterwards. */}
+      <AnimatePresence>
+        {confirming && (
+          <ConfirmDialog
+            title={
+              confirming.action === 'delete'
+                ? `Delete "${confirming.name}"?`
+                : `Leave "${confirming.name}"?`
+            }
+            description={
+              confirming.action === 'delete'
+                ? confirming.kind === 'map'
+                  ? 'It disappears for everyone in it, along with every pin in it and their photos. This cannot be undone.'
+                  : 'It disappears for everyone in it, along with every note and reminder in it. This cannot be undone.'
+                : confirming.kind === 'map'
+                  ? "You'll stop seeing this map. Your pins stay in it for everyone else."
+                  : "You'll stop seeing this list. What you added stays in it for everyone else."
+            }
+            confirmLabel={confirming.action === 'delete' ? 'Delete' : 'Leave'}
+            destructive
+            busy={removing}
+            icon={confirming.action === 'delete' ? <Trash2 size={26} /> : <LogOut size={26} />}
+            onConfirm={confirmRemoval}
+            onCancel={() => setConfirming(null)}
+          />
+        )}
+      </AnimatePresence>
     </div>
   );
 }
