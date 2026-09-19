@@ -123,14 +123,33 @@ export interface Chat {
   updatedAt: any;
 }
 
+/**
+ * Mirrors the `notification_type` enum in Postgres. The two note kinds were
+ * added in 0025: an invitation to a note space, and a reminder falling due.
+ */
+export type NotificationType =
+  | 'like' | 'comment' | 'message' | 'follow' | 'reaction' | 'mention'
+  | 'note_invite' | 'note_reminder';
+
 export interface Notification {
   id: string;
   toUserId: string;
-  type: 'like' | 'comment' | 'message' | 'follow' | 'reaction' | 'mention';
-  subType?: 'text' | 'image' | 'voice';
+  type: NotificationType;
+  /**
+   * A qualifier whose meaning depends on `type`: the medium for a comment,
+   * and for a note_invite which direction it is going — 'accepted' is the
+   * owner's copy saying someone joined, absent is the invitee's copy asking
+   * them to. The column is free text in Postgres; this union is the set the
+   * app actually writes.
+   */
+  subType?: 'text' | 'image' | 'voice' | 'accepted';
   content?: string;
   fromUserId: string;
   referenceId: string;
+  /** Set on note_invite and note_reminder. The invite's Accept/Decline acts on
+   *  this, so it stays a field of its own rather than sharing referenceId. */
+  noteSpaceId?: string;
+  noteId?: string;
   postUserId?: string;
   isRead: boolean;
   createdAt: number;
@@ -149,4 +168,10 @@ export interface MusicHistory {
   createdAt: any;
 }
 
-export type View = 'feed' | 'chat' | 'profile' | 'notifications' | 'search' | 'map' | 'settings' | 'auth';
+/**
+ * `spaces` is the nav destination; `map` is still a view, just no longer one
+ * you reach from the bar. Opening a map space from the hub switches to it, and
+ * it keeps its own entry here because the map needs a full-height layout that
+ * the hub does not.
+ */
+export type View = 'feed' | 'chat' | 'profile' | 'notifications' | 'search' | 'spaces' | 'map' | 'settings' | 'auth';

@@ -445,6 +445,177 @@
   }
 }
 
+/* ── Note-category icon motion ──────────────────────────────────────────────
+   Each category's icon moves like the thing it depicts: the hat stirs, the
+   plane takes off, the heart beats. It is the difference between seven icons
+   and seven ideas, and it only ever plays when someone is already looking at
+   that tile.
+
+   HOW IT IS WIRED
+     .cat-tile      the interactive element (the picker's <button>)
+     .cat-<name>    sets --cat-anim / --cat-dur / --cat-ease for that category
+     .cat-ring      the chip. STATIC — it never animates, and it clips, so the
+                    plane can fly out of frame without escaping the tile
+     .cat-icon      the glyph, and the only thing that moves
+
+   One rule drives all seven. The per-category class supplies the name and the
+   timing through custom properties, so adding a category is one four-line
+   block rather than another copy of the trigger selector.
+
+   TRIGGERS: :hover, :focus and :active. :focus rather than :focus-visible is
+   deliberate — focus-visible deliberately does NOT match a pointer or touch
+   press, so on a phone it would never fire, and :active alone lasts only as
+   long as the finger is down, cutting a 0.7s animation to about a tenth of
+   that. :focus covers the keyboard and the tap; :active covers a press that
+   is dragged off before release.
+
+   COST: transform and opacity only. Both are composited, so nothing here
+   reads back layout or repaints the tile. `will-change` is deliberately NOT
+   set: these are short, infrequent, already cheap, and a standing hint on
+   seven elements costs more than it saves. */
+@layer components {
+  /* ── The picker's outlined ring ───────────────────────────────────────────
+     44px circle, 1.5px stroke, no fill, and the SAME neutral tone for all
+     seven categories — in the picker the categories are being compared, and
+     seven hues there makes the eye sort by colour before it reads a label.
+
+     CONTRAST, measured rather than eyeballed. The tile behind it is
+     bg-surface-2/40 over the modal surface, which composites to #101016.
+     Against that:
+
+       --color-line-strong  #3b3b47   1.72:1   ← would be nearly invisible
+       --color-subtle       #8a8a95   5.55:1
+       --color-muted        #a1a1aa   7.40:1
+
+     So line-strong is NOT used despite being the obvious "border" token: a
+     1.5px hairline is a non-text graphical object and owes 3:1 under WCAG
+     1.4.11, and it misses by a wide margin on this surface. The gradient
+     below runs #cfcfd6 → #6e6e7a, which is 12.2:1 at the lit top and still
+     3.8:1 at the darkest point of the shaded bottom.
+
+     THE SHADING. The ring is drawn as a gradient in the BORDER box with a
+     transparent padding box, so the stroke itself is lit from above while the
+     centre stays genuinely unfilled. The icon gets a matching one-pixel dark
+     drop shadow below and a faint light one above, which is what reads as
+     relief. Everything here is a paint-only property. */
+  .cat-ring--outline {
+    /* 44px in the picker, where the icon is the thing being chosen. 36px in a
+       list row, where it sits beside two lines of text and a 44px circle would
+       out-weigh the name it belongs to. The stroke, the gradient and the
+       shading are identical at both sizes — only the diameter changes. */
+    width: var(--cat-ring-size, 44px);
+    height: var(--cat-ring-size, 44px);
+    border-radius: 9999px;
+    border: 1.5px solid transparent;
+    /* Two layers: a transparent padding box keeps the fill empty, and the
+       border box carries the lit-from-above gradient. */
+    background:
+      linear-gradient(transparent, transparent) padding-box,
+      linear-gradient(165deg, #cfcfd6 0%, #9a9aa4 45%, #6e6e7a 100%) border-box;
+    /* Seats the ring on the card: a hairline of light along the top edge and
+       a soft shadow beneath. Both are shadows, so neither affects layout. */
+    box-shadow:
+      0 1px 2px rgb(0 0 0 / 0.55),
+      inset 0 1px 0 rgb(255 255 255 / 0.05);
+    color: #d4d4db;
+  }
+
+  .cat-ring--sm {
+    --cat-ring-size: 36px;
+  }
+
+  /* The glyph, lit to match the ring: dark below, faint light above. */
+  .cat-ring--outline .cat-icon {
+    filter:
+      drop-shadow(0 1px 0.5px rgb(0 0 0 / 0.65))
+      drop-shadow(0 -0.5px 0 rgb(255 255 255 / 0.12));
+  }
+
+  .cat-ring {
+    /* Clips the plane's exit. Also the reason the ring itself must not move:
+       a transform here would establish a new containing block and drag the
+       glyph with it. */
+    overflow: hidden;
+    /* Gives the notebook's rotateY somewhere to turn. A flat rotateY reads as
+       a horizontal squash rather than a page turning over. */
+    perspective: 220px;
+  }
+
+  .cat-icon {
+    /* The glyph rotates about its own middle; without this the hat stirs
+       around the chip's corner. */
+    transform-origin: center;
+  }
+
+  .cat-tile:hover .cat-icon,
+  .cat-tile:focus .cat-icon,
+  .cat-tile:active .cat-icon {
+    /* `1` is explicit: these play once per hover and never loop. */
+    animation: var(--cat-anim) var(--cat-dur) var(--cat-ease) 1;
+  }
+
+  .cat-cooking     { --cat-anim: cat-stir;    --cat-dur: 0.7s; --cat-ease: ease; }
+  .cat-trip        { --cat-anim: cat-takeoff; --cat-dur: 0.7s; --cat-ease: ease; }
+  .cat-date_ideas  { --cat-anim: cat-beat;    --cat-dur: 0.6s; --cat-ease: ease; }
+  .cat-movies      { --cat-anim: cat-spin;    --cat-dur: 0.8s; --cat-ease: linear; }
+  .cat-gifts       { --cat-anim: cat-shake;   --cat-dur: 0.5s; --cat-ease: ease; }
+  .cat-bucket_list { --cat-anim: cat-twinkle; --cat-dur: 0.7s; --cat-ease: ease; }
+  .cat-general     { --cat-anim: cat-flip;    --cat-dur: 0.6s; --cat-ease: ease; }
+}
+
+/* Stirring a pot: back and forth, returning to level. */
+@keyframes cat-stir {
+  0%, 100% { transform: rotate(0deg); }
+  25%      { transform: rotate(-14deg); }
+  75%      { transform: rotate(14deg); }
+}
+
+/* Taking off: up and out to the top-right, then back in from the bottom-left.
+   The two frames at 45%/46% are the cut — it leaves invisible and returns
+   invisible, so the jump across the chip is never seen. */
+@keyframes cat-takeoff {
+  0%   { transform: translate3d(0, 0, 0);          opacity: 1; }
+  45%  { transform: translate3d(26px, -26px, 0);   opacity: 0; }
+  46%  { transform: translate3d(-26px, 26px, 0);   opacity: 0; }
+  100% { transform: translate3d(0, 0, 0);          opacity: 1; }
+}
+
+/* A heartbeat is two knocks, the second softer than the first. */
+@keyframes cat-beat {
+  0%   { transform: scale(1); }
+  25%  { transform: scale(1.25); }
+  50%  { transform: scale(1); }
+  75%  { transform: scale(1.18); }
+  100% { transform: scale(1); }
+}
+
+/* A reel turning. Linear, because a film reel does not ease. */
+@keyframes cat-spin {
+  from { transform: rotate(0deg); }
+  to   { transform: rotate(360deg); }
+}
+
+/* Shaking a wrapped box to guess what is in it. */
+@keyframes cat-shake {
+  0%, 100% { transform: translate3d(0, 0, 0) rotate(0deg); }
+  20%      { transform: translate3d(-2px, 0, 0) rotate(-8deg); }
+  40%      { transform: translate3d(2px, 0, 0) rotate(8deg); }
+  60%      { transform: translate3d(-2px, 0, 0) rotate(-6deg); }
+  80%      { transform: translate3d(1px, 0, 0) rotate(4deg); }
+}
+
+/* A star catching the light: swells and turns, dimming as it peaks. */
+@keyframes cat-twinkle {
+  0%, 100% { transform: scale(1) rotate(0deg);      opacity: 1; }
+  50%      { transform: scale(1.3) rotate(20deg);   opacity: 0.65; }
+}
+
+/* A page going over and settling back. */
+@keyframes cat-flip {
+  0%, 100% { transform: rotateY(0deg); }
+  50%      { transform: rotateY(180deg); }
+}
+
 /* Honour the OS setting: drop every animation, keep the app fully usable. */
 @media (prefers-reduced-motion: reduce) {
   *,
@@ -454,5 +625,15 @@
     animation-iteration-count: 1 !important;
     transition-duration: 0.01ms !important;
     scroll-behavior: auto !important;
+  }
+
+  /* `animation: none` rather than leaning on the 0.01ms above. That rule makes
+     an animation finish instantly, which for these still applies the final
+     keyframe for one frame — a visible twitch, which is the exact thing the
+     preference asks us not to do. */
+  .cat-tile:hover .cat-icon,
+  .cat-tile:focus .cat-icon,
+  .cat-tile:active .cat-icon {
+    animation: none !important;
   }
 }

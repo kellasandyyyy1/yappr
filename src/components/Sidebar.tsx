@@ -1,22 +1,29 @@
 import React from 'react';
-import { Home, MessageCircle, Bell, User as UserIcon, Search, PenSquare, MapPin } from './icons';
+import { Home, MessageCircle, Bell, User as UserIcon, Search, PenSquare, Layers } from './icons';
 import { View, User } from '../types';
 import { cn } from '../lib/utils';
 import { Avatar } from './Avatar';
 import { Logo } from './Logo';
 
 export interface NavItem {
-  id: Extract<View, 'feed' | 'search' | 'map' | 'chat' | 'notifications' | 'profile'>;
+  id: Extract<View, 'feed' | 'search' | 'spaces' | 'chat' | 'notifications' | 'profile'>;
   icon: typeof Home;
   label: string;
 }
 
-/** Shared by the desktop sidebar and the mobile bottom bar so the two
- *  never drift apart. */
+/**
+ * Shared by the desktop sidebar and the mobile bottom bar so the two never
+ * drift apart.
+ *
+ * `spaces` sits where `map` used to. The map is now one tap further in, behind
+ * the hub, which is the trade for keeping this at six items — the bottom bar
+ * already dropped its text labels at six, and a seventh cell would have taken
+ * each tap target from ~49px to ~42px on a 390px screen.
+ */
 export const NAV_ITEMS: NavItem[] = [
   { id: 'feed', icon: Home, label: 'Feed' },
   { id: 'search', icon: Search, label: 'Explore' },
-  { id: 'map', icon: MapPin, label: 'Map' },
+  { id: 'spaces', icon: Layers, label: 'Spaces' },
   { id: 'chat', icon: MessageCircle, label: 'Messages' },
   { id: 'notifications', icon: Bell, label: 'Notifications' },
   { id: 'profile', icon: UserIcon, label: 'Profile' },
