@@ -91,6 +91,25 @@ export function ThemeSongCard({ song, isOwnProfile, onPlay: onPlayProp, classNam
   // True only between pressing play and playback stopping. Anything that starts
   // the video without this set is playback nobody asked for, and gets stopped.
   const userStartedRef = useRef(false);
+  /**
+   * The pending "did playVideo() actually work?" check.
+   *
+   * Held in a ref so the player itself can call it off. The check used to be a
+   * fire-and-forget setTimeout that nothing could cancel: it looked once, 1.5s
+   * after the tap, and if the player had not left the cued state by then it
+   * declared failure — even though playback then started a moment later. On a
+   * phone that is the normal case, not the exception, which is why the card
+   * said "Couldn't start playback" over a song that was audibly playing.
+   */
+  const startCheckRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  /** Called the moment the player reports it is doing something. */
+  const cancelStartCheck = () => {
+    if (startCheckRef.current) {
+      clearTimeout(startCheckRef.current);
+      startCheckRef.current = null;
+    }
+  };
   const { toast } = useToast();
   const playerId = React.useMemo(
     () => `yt-player-${song.youtubeId}-${Math.random().toString(36).substr(2, 9)}`,
@@ -133,6 +152,7 @@ export function ThemeSongCard({ song, isOwnProfile, onPlay: onPlayProp, classNam
 
   const retry = (e: React.MouseEvent) => {
     e.stopPropagation();
+    cancelStartCheck();
     playerRef.current = null;
     setIsPlayerReady(false);
     setIsPlaying(false);
@@ -142,6 +162,12 @@ export function ThemeSongCard({ song, isOwnProfile, onPlay: onPlayProp, classNam
 
   const onStateChange: YouTubeProps['onStateChange'] = (event) => {
     // 1 is playing, 2 is paused, 0 is ended, 3 is buffering
+    //
+    // Buffering counts as success. It means the player accepted the gesture
+    // and is fetching — the thing the check below is asking about — so a slow
+    // connection must not be reported as a refusal.
+    if (event.data === 1 || event.data === 3) cancelStartCheck();
+
     if (event.data === 1) {
       // A backstop for any route into playback that did not come from the play
       // button — the seekTo above was one, and silently starting the audio is a
@@ -163,6 +189,9 @@ export function ThemeSongCard({ song, isOwnProfile, onPlay: onPlayProp, classNam
       // writing a history row for every music post that scrolled into the feed.
       onPlayProp?.();
     } else if (event.data === 2 || event.data === 0) {
+      // Pausing or ending is also the player answering, so nothing is left
+      // for an armed check to report.
+      cancelStartCheck();
       userStartedRef.current = false;
       releasePlayback(playerId);
       setIsPlaying(false);
@@ -205,11 +234,22 @@ export function ThemeSongCard({ song, isOwnProfile, onPlay: onPlayProp, classNam
         // or the video is unplayable, nothing throws and nothing happens. The
         // state check confirms it actually started.
         player.playVideo();
-        setTimeout(() => {
+
+        // Cancelled by onStateChange the instant the player reports playing or
+        // buffering, so this can only ever fire for a player that did nothing
+        // at all. The window is generous for the same reason: nothing is
+        // waiting on it, and a phone on a slow connection deserves longer than
+        // a desktop before being told it failed.
+        cancelStartCheck();
+        startCheckRef.current = setTimeout(() => {
+          startCheckRef.current = null;
           const p = playerRef.current;
           if (!p || typeof p.getPlayerState !== 'function') return;
           const state = p.getPlayerState();
           // -1 unstarted, 0 ended, 1 playing, 2 paused, 3 buffering, 5 cued.
+          // Re-checked here as well as cancelled above: the two together mean
+          // a false report needs the player to be BOTH silent on its state
+          // events and sitting in a non-playing state seconds later.
           if (state === -1 || state === 5) {
             console.error('[ThemeSongCard] playVideo() had no effect', {
               videoId: song.youtubeId,
@@ -218,7 +258,7 @@ export function ThemeSongCard({ song, isOwnProfile, onPlay: onPlayProp, classNam
             });
             setLoadError("Couldn't start playback");
           }
-        }, 1500);
+        }, 6000);
       }
     } catch (err) {
       console.error('[ThemeSongCard] Play toggle threw', { videoId: song.youtubeId, err });
@@ -235,6 +275,7 @@ export function ThemeSongCard({ song, isOwnProfile, onPlay: onPlayProp, classNam
   // ref inside the cleanup gets the player that exists at teardown.
   useEffect(() => {
     return () => {
+      cancelStartCheck();
       releasePlayback(playerId);
       const player = playerRef.current;
       if (player && typeof player.stopVideo === 'function') {
