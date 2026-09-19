@@ -1,6 +1,6 @@
 import React, { useState, useRef, useEffect } from 'react';
 import YouTube, { YouTubeProps } from 'react-youtube';
-import { Play, Pause, Music, Volume2, VolumeX, Loader2, AlertCircle } from './icons';
+import { Play, Pause, Music, Loader2, AlertCircle } from './icons';
 import { motion } from 'motion/react';
 import { ThemeSong } from '../types';
 import { cn } from '../lib/utils';
@@ -60,10 +60,25 @@ const releasePlayback = (key: string) => {
   if (nowPlaying?.key === key) nowPlaying = null;
 };
 
+/**
+ * A song PREVIEW, not a player: artwork, title, artist and a play control.
+ *
+ * It had a transport row underneath — elapsed time, a seek slider, duration
+ * and a volume control — and that is deliberately gone. Two reasons it is not
+ * missed: the card is a preview of someone's theme song rather than something
+ * you sit and scrub through, and the scrubber cost a timer.
+ *
+ * The IFrame API exposes getCurrentTime() but fires no timeupdate event, so
+ * the only way to drive a progress bar from it is to poll — this polled every
+ * 250ms for the whole length of the track, four state updates a second, each
+ * re-rendering the card. Deleting the bar deletes the poll.
+ *
+ * Playback is untouched: play, pause, the one-song-at-a-time registry and the
+ * per-song start time all work exactly as before.
+ */
 export function ThemeSongCard({ song, isOwnProfile, onPlay: onPlayProp, className, variant = 'card' }: ThemeSongCardProps) {
   const [isPlaying, setIsPlaying] = useState(false);
   const [isPlayerReady, setIsPlayerReady] = useState(false);
-  const [isMuted, setIsMuted] = useState(false);
   // Whatever actually went wrong, in words, shown on the card. The old code
   // caught onError, set isPlayerReady(false) and said nothing — so a video with
   // embedding disabled looked identical to one still loading, forever, and
@@ -72,22 +87,29 @@ export function ThemeSongCard({ song, isOwnProfile, onPlay: onPlayProp, classNam
   // Bumping this remounts <YouTube>, which is the only way to retry a failed
   // embed: the underlying player is destroyed and rebuilt from scratch.
   const [playerNonce, setPlayerNonce] = useState(0);
-  // Transport state, read back off the IFrame API rather than guessed. There
-  // used to be a fake progress bar animating over a fixed 30s, which was
-  // wrong for every track that is not 30 seconds long.
-  const [currentTime, setCurrentTime] = useState(0);
-  const [duration, setDuration] = useState(0);
-  const [volume, setVolume] = useState(100);
-  // The transport row only appears once a song has actually been started, so
-  // an untouched card stays the compact chip it was designed as.
-  const [hasStarted, setHasStarted] = useState(false);
   const playerRef = useRef<any>(null);
   // True only between pressing play and playback stopping. Anything that starts
   // the video without this set is playback nobody asked for, and gets stopped.
   const userStartedRef = useRef(false);
-  // True while the scrubber is being dragged. The 250ms poll below must not
-  // yank the handle back to the player's position mid-drag.
-  const scrubbingRef = useRef(false);
+  /**
+   * The pending "did playVideo() actually work?" check.
+   *
+   * Held in a ref so the player itself can call it off. The check used to be a
+   * fire-and-forget setTimeout that nothing could cancel: it looked once, 1.5s
+   * after the tap, and if the player had not left the cued state by then it
+   * declared failure — even though playback then started a moment later. On a
+   * phone that is the normal case, not the exception, which is why the card
+   * said "Couldn't start playback" over a song that was audibly playing.
+   */
+  const startCheckRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  /** Called the moment the player reports it is doing something. */
+  const cancelStartCheck = () => {
+    if (startCheckRef.current) {
+      clearTimeout(startCheckRef.current);
+      startCheckRef.current = null;
+    }
+  };
   const { toast } = useToast();
   const playerId = React.useMemo(
     () => `yt-player-${song.youtubeId}-${Math.random().toString(36).substr(2, 9)}`,
@@ -130,18 +152,22 @@ export function ThemeSongCard({ song, isOwnProfile, onPlay: onPlayProp, classNam
 
   const retry = (e: React.MouseEvent) => {
     e.stopPropagation();
+    cancelStartCheck();
     playerRef.current = null;
     setIsPlayerReady(false);
     setIsPlaying(false);
     setLoadError(null);
-    setCurrentTime(0);
-    setDuration(0);
-    setHasStarted(false);
     setPlayerNonce((n) => n + 1);
   };
 
   const onStateChange: YouTubeProps['onStateChange'] = (event) => {
     // 1 is playing, 2 is paused, 0 is ended, 3 is buffering
+    //
+    // Buffering counts as success. It means the player accepted the gesture
+    // and is fetching — the thing the check below is asking about — so a slow
+    // connection must not be reported as a refusal.
+    if (event.data === 1 || event.data === 3) cancelStartCheck();
+
     if (event.data === 1) {
       // A backstop for any route into playback that did not come from the play
       // button — the seekTo above was one, and silently starting the audio is a
@@ -155,11 +181,6 @@ export function ThemeSongCard({ song, isOwnProfile, onPlay: onPlayProp, classNam
         return;
       }
       setIsPlaying(true);
-      setHasStarted(true);
-      try {
-        const total = event.target.getDuration?.() ?? 0;
-        if (total > 0) setDuration(total);
-      } catch { /* ignore */ }
       claimPlayback(playerId, () => {
         userStartedRef.current = false;
         try { event.target.pauseVideo(); } catch { /* ignore */ }
@@ -168,12 +189,12 @@ export function ThemeSongCard({ song, isOwnProfile, onPlay: onPlayProp, classNam
       // writing a history row for every music post that scrolled into the feed.
       onPlayProp?.();
     } else if (event.data === 2 || event.data === 0) {
+      // Pausing or ending is also the player answering, so nothing is left
+      // for an armed check to report.
+      cancelStartCheck();
       userStartedRef.current = false;
       releasePlayback(playerId);
       setIsPlaying(false);
-      // 0 is ended: send the head back to the start point so pressing play
-      // again replays rather than sitting at the end doing nothing.
-      if (event.data === 0) setCurrentTime(song.startTime || 0);
     }
   };
 
@@ -203,20 +224,32 @@ export function ThemeSongCard({ song, isOwnProfile, onPlay: onPlayProp, classNam
         userStartedRef.current = true;
         // Essential for mobile: unMute and then Play
         // Some mobile browsers block sound-on autoplay, so we ensure it's loud
-        // Respect the level the listener already chose rather than resetting
-        // to full every time they press play.
-        if (volume > 0) player.unMute();
-        player.setVolume(volume);
+        // Full volume, unconditionally. There is no volume control on the
+        // card any more, so there is no chosen level to respect — and the
+        // device already has one.
+        player.unMute();
+        player.setVolume(100);
         player.seekTo(song.startTime || 0, true);
         // playVideo() is fire-and-forget: if the browser refuses the gesture
         // or the video is unplayable, nothing throws and nothing happens. The
         // state check confirms it actually started.
         player.playVideo();
-        setTimeout(() => {
+
+        // Cancelled by onStateChange the instant the player reports playing or
+        // buffering, so this can only ever fire for a player that did nothing
+        // at all. The window is generous for the same reason: nothing is
+        // waiting on it, and a phone on a slow connection deserves longer than
+        // a desktop before being told it failed.
+        cancelStartCheck();
+        startCheckRef.current = setTimeout(() => {
+          startCheckRef.current = null;
           const p = playerRef.current;
           if (!p || typeof p.getPlayerState !== 'function') return;
           const state = p.getPlayerState();
           // -1 unstarted, 0 ended, 1 playing, 2 paused, 3 buffering, 5 cued.
+          // Re-checked here as well as cancelled above: the two together mean
+          // a false report needs the player to be BOTH silent on its state
+          // events and sitting in a non-playing state seconds later.
           if (state === -1 || state === 5) {
             console.error('[ThemeSongCard] playVideo() had no effect', {
               videoId: song.youtubeId,
@@ -225,68 +258,12 @@ export function ThemeSongCard({ song, isOwnProfile, onPlay: onPlayProp, classNam
             });
             setLoadError("Couldn't start playback");
           }
-        }, 1500);
+        }, 6000);
       }
     } catch (err) {
       console.error('[ThemeSongCard] Play toggle threw', { videoId: song.youtubeId, err });
       setLoadError('Playback failed');
     }
-  };
-
-  /**
-   * Poll the player for position.
-   *
-   * The IFrame API exposes getCurrentTime() but fires no timeupdate event, so
-   * polling is the only way to drive a progress bar from it. 250ms is a
-   * quarter-second of drift at worst and costs nothing measurable; it runs
-   * only while something is actually playing.
-   */
-  useEffect(() => {
-    if (!isPlaying) return;
-    const id = setInterval(() => {
-      const player = playerRef.current;
-      if (!player || typeof player.getCurrentTime !== 'function') return;
-      try {
-        if (!scrubbingRef.current) setCurrentTime(player.getCurrentTime() ?? 0);
-        const total = player.getDuration?.() ?? 0;
-        if (total > 0) setDuration(total);
-      } catch {
-        /* the player can be torn down between ticks */
-      }
-    }, 250);
-    return () => clearInterval(id);
-  }, [isPlaying]);
-
-  /** mm:ss. Duration is unknown until the player reports it, so it renders as
-   *  --:-- rather than a confident 0:00. */
-  const clock = (seconds: number) => {
-    if (!Number.isFinite(seconds) || seconds < 0) return '--:--';
-    const m = Math.floor(seconds / 60);
-    const sec = Math.floor(seconds % 60);
-    return `${m}:${sec.toString().padStart(2, '0')}`;
-  };
-
-  const seekTo = (seconds: number) => {
-    const player = playerRef.current;
-    setCurrentTime(seconds);
-    if (!player || typeof player.seekTo !== 'function') return;
-    try {
-      // allowSeekAhead=true only on release: during a drag it would fire a
-      // network request per pixel moved.
-      player.seekTo(seconds, !scrubbingRef.current);
-    } catch { /* ignore */ }
-  };
-
-  const applyVolume = (next: number) => {
-    const player = playerRef.current;
-    setVolume(next);
-    setIsMuted(next === 0);
-    if (!player || typeof player.setVolume !== 'function') return;
-    try {
-      player.setVolume(next);
-      if (next === 0) player.mute();
-      else player.unMute();
-    } catch { /* ignore */ }
   };
 
   // Stop the video when the card goes away.
@@ -298,6 +275,7 @@ export function ThemeSongCard({ song, isOwnProfile, onPlay: onPlayProp, classNam
   // ref inside the cleanup gets the player that exists at teardown.
   useEffect(() => {
     return () => {
+      cancelStartCheck();
       releasePlayback(playerId);
       const player = playerRef.current;
       if (player && typeof player.stopVideo === 'function') {
@@ -538,71 +516,6 @@ export function ThemeSongCard({ song, isOwnProfile, onPlay: onPlayProp, classNam
         )}
       </div>
 
-      {/* Transport. Appears only once a track has actually been started, so an
-          untouched card stays the compact chip; a player in use gets a real
-          scrubber and a real level. Everything here reads from and writes to
-          the IFrame API — none of it is decorative, which the 30-second fake
-          progress bar this replaces very much was. */}
-      {hasStarted && !loadError && (
-        <div className="mt-1.5 flex items-center gap-2 px-0.5">
-          <span className="w-8 shrink-0 text-right text-[10px] tabular-nums text-subtle">
-            {clock(currentTime)}
-          </span>
-
-          <input
-            type="range"
-            min={0}
-            max={duration > 0 ? Math.floor(duration) : 100}
-            step={1}
-            value={Math.min(currentTime, duration > 0 ? duration : 100)}
-            disabled={duration === 0}
-            aria-label="Seek"
-            onPointerDown={() => { scrubbingRef.current = true; }}
-            onPointerUp={(e) => {
-              scrubbingRef.current = false;
-              seekTo(Number((e.target as HTMLInputElement).value));
-            }}
-            onChange={(e) => seekTo(Number(e.target.value))}
-            onClick={(e) => e.stopPropagation()}
-            style={{ ['--fill' as string]: `${duration > 0 ? (currentTime / duration) * 100 : 0}%` }}
-            className="track-slider track-slider-quiet h-1 min-w-0 flex-1"
-          />
-
-          <span className="w-8 shrink-0 text-[10px] tabular-nums text-subtle">
-            {duration > 0 ? clock(duration) : '--:--'}
-          </span>
-
-          {/* Volume stays collapsed to its icon until touched — a slider
-              permanently beside the scrubber made a two-control row read as
-              four. */}
-          <div className="group/vol relative flex shrink-0 items-center">
-            <button
-              type="button"
-              onClick={(e) => { e.stopPropagation(); applyVolume(volume === 0 ? 100 : 0); }}
-              aria-label={volume === 0 ? 'Unmute' : 'Mute'}
-              className="flex h-6 w-6 items-center justify-center rounded-full text-subtle transition-colors hover:text-fg"
-            >
-              {volume === 0 ? <VolumeX size={13} /> : <Volume2 size={13} />}
-            </button>
-            <input
-              type="range"
-              min={0}
-              max={100}
-              step={1}
-              value={volume}
-              aria-label="Volume"
-              onChange={(e) => applyVolume(Number(e.target.value))}
-              onClick={(e) => e.stopPropagation()}
-              style={{ ['--fill' as string]: `${volume}%` }}
-              className={cn(
-                "track-slider track-slider-quiet h-1 w-0 opacity-0 transition-all duration-150",
-                "group-hover/vol:ml-1.5 group-hover/vol:w-14 group-hover/vol:opacity-100",
-                "focus:ml-1.5 focus:w-14 focus:opacity-100"
-              )}
-            />
-          </div>
-        </div>
-      )}
       </>
       )}
     </motion.div>
