@@ -44,7 +44,7 @@
   ],
 
   "crons": [
-    { "path": "/api/reminders-due", "schedule": "* * * * *" }
+    { "path": "/api/reminders-due", "schedule": "0 1 * * *" }
   ],
 
   "rewrites": [
