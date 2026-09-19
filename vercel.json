@@ -43,6 +43,10 @@
     }
   ],
 
+  "crons": [
+    { "path": "/api/reminders-due", "schedule": "* * * * *" }
+  ],
+
   "rewrites": [
     { "source": "/((?!api/|assets/|favicon/|legal/|sw\\.js|manifest\\.json|robots\\.txt).*)", "destination": "/index.html" }
   ]

@@ -1,5 +1,5 @@
 import { supabase, resolveStorageUrl, uploadFile, uploadFileWithProgress } from './supabase';
-import type { User, Post, Comment, Message, Chat, Notification, ThemeSong, MusicHistory } from '../types';
+import type { User, Post, Comment, Message, Chat, Notification, NotificationType, ThemeSong, MusicHistory } from '../types';
 import type { RealtimeChannel } from '@supabase/supabase-js';
 
 /**
@@ -1308,6 +1308,7 @@ export const notifications = {
     const { data, error } = await supabase
       .from('notifications')
       .select(`id, recipient_id, actor_id, type, subtype, content, post_id, conversation_id,
+               note_space_id, note_id,
                is_read, created_at, actor:users!notifications_actor_id_fkey(${USER_FIELDS})`)
       .eq('recipient_id', userId)
       .order('created_at', { ascending: false })
@@ -1322,6 +1323,12 @@ export const notifications = {
       subType: row.subtype ?? undefined,
       content: row.content ?? undefined,
       referenceId: row.post_id ?? row.conversation_id ?? '',
+      // Kept separate from referenceId rather than folded into it. A note
+      // invite needs the space id to act on and the notification id to mark
+      // read, and the invite row is answered by (space, recipient) — overload
+      // referenceId and the Accept button has nothing to call.
+      noteSpaceId: row.note_space_id ?? undefined,
+      noteId: row.note_id ?? undefined,
       isRead: row.is_read,
       createdAt: row.created_at,
       fromUser: mapUser(row.actor),
@@ -1330,8 +1337,9 @@ export const notifications = {
 
   async create(input: {
     recipientId: string; actorId: string;
-    type: 'like' | 'comment' | 'message' | 'follow' | 'reaction' | 'mention';
+    type: NotificationType;
     postId?: string; conversationId?: string; content?: string; subtype?: string;
+    noteSpaceId?: string; noteId?: string;
   }) {
     if (input.recipientId === input.actorId) return; // never notify yourself
     await supabase.from('notifications').insert({
@@ -1342,6 +1350,8 @@ export const notifications = {
       content: input.content ?? null,
       post_id: input.postId ?? null,
       conversation_id: input.conversationId ?? null,
+      note_space_id: input.noteSpaceId ?? null,
+      note_id: input.noteId ?? null,
     });
   },
 

@@ -1,5 +1,5 @@
 import React, { useEffect, useState, useCallback, useMemo } from 'react';
-import { Plus, Loader2, AlertCircle, Trash2, Users as UsersIcon, MapPin as MapPinIcon, UserPlus } from './icons';
+import { Plus, Loader2, AlertCircle, Trash2, Users as UsersIcon, MapPin as MapPinIcon, UserPlus, ArrowLeft } from './icons';
 import { PinMap, useCurrentLocation, spaceColor } from './PinMap';
 import { CreatePinModal } from './CreatePinModal';
 import { CreateSpaceModal } from './CreateSpaceModal';
@@ -21,6 +21,13 @@ import type { User } from '../types';
 
 interface MapViewProps {
   user: User;
+  /** Opened from the Spaces hub for one particular space: start filtered to
+   *  it rather than on the combined map. Null arrives from every other entry
+   *  point and keeps the all-spaces default. */
+  initialSpaceId?: string | null;
+  /** Back to the hub. Absent when the map is reached some other way, in which
+   *  case no back affordance is drawn. */
+  onBack?: () => void;
   onUserClick?: (uid: string) => void;
 }
 
@@ -37,11 +44,13 @@ interface MapViewProps {
  * Nothing here filters by membership — RLS does (0017). A second filter could
  * only ever hide something a member is entitled to see.
  */
-export function MapView({ user, onUserClick }: MapViewProps) {
+export function MapView({ user, initialSpaceId = null, onBack, onUserClick }: MapViewProps) {
   const [spaces, setSpaces] = useState<MapSpace[] | null>(null);
   const [pins, setPins] = useState<Pin[] | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [activeSpaceId, setActiveSpaceId] = useState<string | null>(null); // null = all
+  // null = all. Seeded from the hub when the map was opened for one space;
+  // the chip row can still clear it back to the combined view.
+  const [activeSpaceId, setActiveSpaceId] = useState<string | null>(initialSpaceId);
   const [creatingSpace, setCreatingSpace] = useState(false);
   // The space whose membership is being managed. Distinct from viewingMembers
   // below: that one is the read-only "who else sees this pin?" list nested in
@@ -220,6 +229,19 @@ export function MapView({ user, onUserClick }: MapViewProps) {
   return (
     <div className="flex min-h-0 flex-1 flex-col gap-3 py-4">
       <div className="flex items-center justify-between gap-3">
+        {/* Only drawn when there is somewhere to go back to. The map is
+            reachable from the Spaces hub, and from nowhere else that would
+            want this. */}
+        {onBack && (
+          <button
+            type="button"
+            onClick={onBack}
+            aria-label="Back to spaces"
+            className="-ml-2 shrink-0 rounded-full p-2 text-muted transition-colors hover:bg-surface-2 hover:text-fg"
+          >
+            <ArrowLeft size={20} />
+          </button>
+        )}
         <div className="min-w-0">
           <h1 className="font-pixel text-lg text-fg">Map</h1>
           <p className="truncate text-xs text-muted">

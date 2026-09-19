@@ -501,6 +501,71 @@ async function startServer() {
     res.json({ status: "ok", timestamp: new Date().toISOString() });
   });
 
+  /**
+   * GET|POST /api/reminders-due — the dev-server twin of api/reminders-due.ts.
+   *
+   * Vercel runs the file in api/; this Express server does not pick those up,
+   * so without this the route simply 404s locally and the only way to watch a
+   * reminder fire is to deploy. Both call the SAME sweep in api/_reminders.ts,
+   * so what happens here is what happens in production.
+   *
+   * The Bearer check is deliberately identical rather than relaxed for dev. A
+   * local route that skips authorisation is a local route that tests something
+   * other than the thing being shipped — and the mismatch it hides (a
+   * CRON_SECRET that differs between .env.local and Vercel) is exactly the
+   * failure this is here to catch.
+   *
+   * Trigger it by hand:
+   *   curl -H "Authorization: Bearer $CRON_SECRET" localhost:3000/api/reminders-due
+   *
+   * It writes to the REAL database named in .env.local, and really does send
+   * push notifications to everyone in the affected spaces. It is not a dry run.
+   */
+  app.all("/api/reminders-due", async (req, res) => {
+    if (req.method !== "GET" && req.method !== "POST") {
+      res.setHeader("Allow", "GET, POST");
+      return res.status(405).json({ error: "Method not allowed" });
+    }
+
+    const url = process.env.SUPABASE_URL || process.env.VITE_SUPABASE_URL;
+    const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+    const cronSecret = process.env.CRON_SECRET;
+
+    if (!url || !serviceKey) {
+      return res.status(503).json({ error: "Supabase service role is not configured" });
+    }
+    if (!cronSecret) {
+      return res.status(503).json({ error: "CRON_SECRET is not set" });
+    }
+    if ((req.headers.authorization || "") !== `Bearer ${cronSecret}`) {
+      return res.status(401).json({ error: "Unauthorized" });
+    }
+
+    try {
+      const { createClient } = await import("@supabase/supabase-js");
+      const { sweepDueReminders } = await import("./api/_reminders");
+      const admin = createClient(url, serviceKey, { auth: { persistSession: false } });
+
+      const result = await sweepDueReminders({
+        admin,
+        // pushEnabled is the same flag /api/send-push uses, set at boot from
+        // the VAPID keys. No keys means in-app rows only, which is the correct
+        // degradation rather than a failure.
+        push: pushEnabled ? webpush : null,
+      });
+
+      if (result.warning) console.error("Reminder sweep:", result.warning);
+      console.log(
+        `Reminder sweep: ${result.due} due, ${result.notified} notification(s), ` +
+        `${result.delivered} push delivered, ${result.pruned} subscription(s) pruned`
+      );
+      return res.json({ ok: true, ...result });
+    } catch (err) {
+      console.error("Reminder sweep failed:", err);
+      return res.status(500).json({ error: "Reminder sweep failed" });
+    }
+  });
+
   app.post("/api/send-push", requireAuth, async (req, res) => {
     if (!pushEnabled) {
       return res.status(503).json({ error: "Push notifications are not configured" });

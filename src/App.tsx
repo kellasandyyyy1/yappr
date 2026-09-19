@@ -25,6 +25,9 @@ import { motion, AnimatePresence } from 'motion/react';
 import { cn } from './lib/utils';
 import { LegalPage } from './components/LegalPage';
 import { MapView } from './components/MapView';
+import { SpacesView } from './components/SpacesView';
+import { NoteSpaceView } from './components/NoteSpaceView';
+import type { NoteSpace } from './lib/notes';
 import { ResetPasswordView } from './components/ResetPasswordView';
 import { usePathname, isPublicRoute, normalizePath, navigate } from './lib/router';
 import { parseProfileQr } from './lib/brand';
@@ -59,6 +62,13 @@ export default function App() {
   const [isScanning, setIsScanning] = useState(false);
   const [scannedUserId, setScannedUserId] = useState<string | null>(null);
   const [targetChatUserId, setTargetChatUserId] = useState<string | null>(null);
+  // The notes space being read, or null for the hub. Held here rather than
+  // inside SpacesView so that opening one from a notification works the same
+  // way as opening one from the list.
+  const [openNoteSpace, setOpenNoteSpace] = useState<NoteSpace | null>(null);
+  // The map space to frame when the map opens from the hub. Consumed by
+  // MapView on mount and then irrelevant.
+  const [targetMapSpaceId, setTargetMapSpaceId] = useState<string | null>(null);
 
   // Legal routing. The consent gate is switched off for now — the pages
   // themselves are still routed and reachable, and nothing about the
@@ -365,6 +375,30 @@ export default function App() {
                 />
               </motion.div>
             )}
+            {currentView === 'spaces' && user && (
+              <motion.div key="spaces" {...pageMotion}>
+                {openNoteSpace ? (
+                  <NoteSpaceView
+                    user={user}
+                    space={openNoteSpace}
+                    onBack={() => setOpenNoteSpace(null)}
+                    onUserClick={(uid) => {
+                      setViewingProfileId(uid);
+                      setCurrentView('profile');
+                    }}
+                  />
+                ) : (
+                  <SpacesView
+                    user={user}
+                    onOpenMapSpace={(id) => {
+                      setTargetMapSpaceId(id);
+                      setCurrentView('map');
+                    }}
+                    onOpenNoteSpace={setOpenNoteSpace}
+                  />
+                )}
+              </motion.div>
+            )}
             {currentView === 'map' && user && (
               <motion.div
                 key="map"
@@ -395,6 +429,11 @@ export default function App() {
               >
                 <MapView
                   user={user}
+                  initialSpaceId={targetMapSpaceId}
+                  onBack={() => {
+                    setTargetMapSpaceId(null);
+                    setCurrentView('spaces');
+                  }}
                   onUserClick={(uid) => {
                     setViewingProfileId(uid);
                     setCurrentView('profile');
@@ -466,6 +505,10 @@ export default function App() {
                   }}
                   onPostClick={(postId) => {
                     handlePostClick(postId);
+                  }}
+                  onOpenSpaces={() => {
+                    setOpenNoteSpace(null);
+                    setCurrentView('spaces');
                   }}
                   onBack={() => setCurrentView('feed')}
                 />

@@ -30,6 +30,7 @@
     "db:push": "supabase db push",
     "db:verify": "tsx scripts/migrate/06-verify-live-schema.ts",
     "db:rls": "tsx scripts/migrate/07-rls-suite.ts",
+    "test:notes": "tsx scripts/migrate/08-notes-rls-suite.ts",
     "db:bundle": "node scripts/bundle-sql.cjs",
     "db:probe": "tsx scripts/migrate/probe-staging.ts"
   },

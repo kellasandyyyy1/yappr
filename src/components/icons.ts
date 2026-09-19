@@ -20,10 +20,13 @@ export {
   IconArrowLeft as ArrowLeft,
   IconAt as AtSign,                // Tabler calls it what it is rather than what it looks like
   IconBell as Bell,
+  IconCalendarClock as CalendarClock,      // the due-date badge on a reminder
   IconCamera as Camera,
+  IconChefHat as ChefHat,            // Cooking spaces
   IconCheck as Check,
   IconChecks as CheckCheck,            // two ticks — the read receipt
   IconCircleCheck as CheckCircle2,       // Tabler puts the shape first: Circle+Check
+  IconCircleDashed as CircleDashed,       // an unticked reminder's checkbox
   IconChevronDown as ChevronDown,
   IconChevronLeft as ChevronLeft,
   IconChevronRight as ChevronRight,
@@ -36,6 +39,7 @@ export {
   IconFileText as FileText,
   IconMovie as Film,             // no Film in Tabler; Movie is the same clapper-free strip
   IconWorld as Globe,             // Tabler has no Globe — World is the same wire globe
+  IconGift as Gift,              // Gift-ideas spaces
   IconLayoutGrid as Grid,        // LayoutGrid, since Tabler reserves Grid for the dot grid
   IconHeart as Heart,
   IconHistory as History,
@@ -46,6 +50,7 @@ export {
   IconKey as KeyRound,               // Tabler has one key and it is this shape
   IconStack2 as Layers,            // Stack2 is the three-sheet stack Layers draws
   IconList as List,
+  IconListCheck as ListCheck,          // a space's note count, in the hub row
   IconListTree as ListTree,
   IconLoader2 as Loader2,
   IconLock as Lock,
@@ -58,9 +63,11 @@ export {
   IconMicrophone as Mic,        // spelled out
   IconDotsVertical as MoreVertical,      // Tabler names the glyph — three dots
   IconMusic as Music,
+  IconNotebook as Notebook,           // notes spaces, in the nav and the hub
   IconPlayerPause as Pause,       // transport controls are prefixed Player in Tabler
   IconEdit as PenSquare,              // Edit is the pencil-in-a-box; the compose action
   IconPlayerPlay as Play,        // as above
+  IconPlane as Plane,            // Trip-planning spaces
   IconPlus as Plus,
   IconQrcode as QrCode,
   IconRefresh as RefreshCw,           // direction is not in the name
@@ -68,6 +75,7 @@ export {
   IconRotateClockwise as RotateCw,   // RotateClockwise spells the direction out
   IconSearch as Search,
   IconSend as Send,
+  IconStars as Stars,            // Bucket-list spaces
   IconSettings as Settings,
   IconShare as Share,
   IconShare2 as Share2,

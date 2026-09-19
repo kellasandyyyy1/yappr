@@ -9,8 +9,8 @@ import {
 import { uploadFile, UploadError } from '../lib/supabase';
 import { User, Post } from '../types';
 import { motion, AnimatePresence } from 'motion/react';
-import { LogOut, Grid, List, Layers, AtSign, X, Trash2, Camera, User as UserIcon, AlignLeft, Loader2, ChevronLeft, ChevronRight, Heart, MessageCircle, QrCode, Download, Music, Plus } from './icons';
-import { cn, formatTimeAgo } from '../lib/utils';
+import { LogOut, Grid, List, Layers, AtSign, X, Trash2, Camera, User as UserIcon, AlignLeft, Loader2, ChevronLeft, ChevronRight, Heart, MessageCircle, QrCode, Download, Share2, Music, Plus } from './icons';
+import { cn, formatTimeAgo, describeError } from '../lib/utils';
 import { UsersListModal } from './UsersListModal';
 import { Avatar } from './Avatar';
 import { Skeleton, GridSkeleton } from './Skeleton';
@@ -63,6 +63,7 @@ export function ProfileView({ user: currentUser, profileUserId, onLogout, onBack
   const [selectedImage, setSelectedImage] = useState<File | null>(null);
   const [imagePreview, setImagePreview] = useState<string | null>(null);
   const [isDownloadingQR, setIsDownloadingQR] = useState(false);
+  const [isSharingQR, setIsSharingQR] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const qrCardRef = useRef<HTMLDivElement>(null);
   const { toast } = useToast();
@@ -355,26 +356,135 @@ export function ProfileView({ user: currentUser, profileUserId, onLogout, onBack
     onLogout();
   };
 
+  /**
+   * A `data:` URL to a Blob, without fetch().
+   *
+   * `await fetch(dataUrl)` is the usual one-liner and it is what broke this:
+   * the app's CSP sets `connect-src 'self' https://*.supabase.co …` with no
+   * `data:` entry, so the browser blocks the request before it starts and the
+   * share fails with a bare TypeError. Decoding the base64 by hand touches no
+   * network layer, so no CSP directive applies — which is a better fix than
+   * widening connect-src to allow `data:` for one button.
+   */
+  const dataUrlToBlob = (dataUrl: string): Blob => {
+    const [header, encoded] = dataUrl.split(',');
+    const mime = header.match(/:(.*?);/)?.[1] ?? 'image/png';
+    const binary = atob(encoded);
+    const bytes = new Uint8Array(binary.length);
+    for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
+    return new Blob([bytes], { type: mime });
+  };
+
+  /**
+   * The QR card as a PNG data URL. Shared by saving and sharing, which
+   * differ only in what they do with the bytes.
+   */
+  const renderQRCode = async (): Promise<string> => {
+    if (!qrCardRef.current) throw new Error('QR card is not mounted');
+
+    const options = {
+      cacheBust: true,
+      backgroundColor: '#0c0c10', // Match the card background
+      style: {
+        transform: 'scale(1)', // Ensure no transforms are active during capture
+      },
+    };
+
+    // Rendered twice, deliberately. html-to-image inlines the avatar embedded
+    // in the QR by loading it into the cloned DOM, and its first pass can
+    // resolve before that image has decoded — which yields a truncated data
+    // URL, or one with a hole where the avatar should be. The second pass runs
+    // against a warm cache and is the one that is kept. It costs a few tens of
+    // milliseconds and removes an intermittent failure that only ever showed
+    // up on profiles that have a photo.
+    await toPng(qrCardRef.current, options);
+    const dataUrl = await toPng(qrCardRef.current, options);
+
+    // A failed render does not always throw: it can hand back an empty string
+    // or a header with no payload, which then fails much later and much less
+    // helpfully — as a corrupt download, or an unreadable clipboard image.
+    if (!dataUrl || dataUrl.length < 'data:image/png;base64,'.length + 1) {
+      throw new Error('the image came back empty');
+    }
+    return dataUrl;
+  };
+
+  /**
+   * Share the code itself, rather than a link to it.
+   *
+   * There is no profile URL in this app — the router serves three static paths
+   * and nothing resolves a username — so a "copy link" would put a dead address
+   * on someone's clipboard. The QR image IS the shareable artifact, so that is
+   * what gets shared, and the desktop fallback copies the image rather than
+   * inventing a URL. See the note in the handover if a real /u/<username>
+   * route is wanted later.
+   *
+   * Three tiers, narrowing as support drops away:
+   *   1. navigator.share with the file — the native sheet, phones and Safari
+   *   2. the clipboard, as an image — Chrome, Edge and Safari on desktop
+   *   3. a download, which is the Save button's job and always works
+   */
+  const shareQRCode = async () => {
+    if (!profileUser) return;
+    setIsSharingQR(true);
+    try {
+      const dataUrl = await renderQRCode();
+      const blob = dataUrlToBlob(dataUrl);
+      const file = new File([blob], `yappr-${profileUser.username}.png`, { type: 'image/png' });
+      const text = `Scan this to follow @${profileUser.username} on Yappr`;
+
+      if (navigator.canShare?.({ files: [file] })) {
+        await navigator.share({ files: [file], title: `@${profileUser.username} on Yappr`, text });
+        return;
+      }
+
+      if (typeof ClipboardItem !== 'undefined' && navigator.clipboard?.write) {
+        await navigator.clipboard.write([new ClipboardItem({ 'image/png': blob })]);
+        toast('QR code copied — paste it anywhere', 'success');
+        return;
+      }
+
+      await downloadQRCode();
+      toast('Sharing is not available here, so it saved instead', 'success');
+    } catch (err) {
+      // Dismissing the share sheet rejects with AbortError. That is a choice,
+      // not a failure, and must not raise an error toast.
+      if ((err as Error)?.name === 'AbortError') return;
+      // NotAllowedError from the clipboard means the tab lost focus between
+      // the click and the write — worth saying, because retrying works.
+      console.error('Error sharing QR:', err);
+      toast(
+        (err as Error)?.name === 'NotAllowedError'
+          ? 'Click the page, then try sharing again'
+          : `Couldn't share the QR code — ${describeError(err)}`,
+        'error'
+      );
+    } finally {
+      setIsSharingQR(false);
+    }
+  };
+
   const downloadQRCode = async () => {
     if (!qrCardRef.current) return;
-    
+
     setIsDownloadingQR(true);
     try {
-      const dataUrl = await toPng(qrCardRef.current, {
-        cacheBust: true,
-        backgroundColor: '#0c0c10', // Match the card background
-        style: {
-          transform: 'scale(1)', // Ensure no transforms are active during capture
-        }
-      });
-      
-      if (!dataUrl) throw new Error('Failed to generate image data');
-      
+      const dataUrl = await renderQRCode();
+
+      // Downloaded from a blob: URL rather than the data: URL directly. A
+      // data: href works for small images, but browsers cap how long a URL
+      // may be and this one carries a whole PNG — a profile with a photo can
+      // push it past the limit, at which point the click silently does
+      // nothing. A blob: URL is a short handle to the same bytes.
+      const url = URL.createObjectURL(dataUrlToBlob(dataUrl));
       const link = document.createElement("a");
       link.download = `yappr-id-${profileUser?.username || 'user'}.png`;
-      link.href = dataUrl;
+      link.href = url;
       link.click();
-      
+      // Revoked on the next tick: revoking synchronously can race the
+      // browser's own read of the blob and produce a zero-byte file.
+      setTimeout(() => URL.revokeObjectURL(url), 10_000);
+
       toast('QR code saved', 'success');
       confetti({
         particleCount: 80,
@@ -384,7 +494,7 @@ export function ProfileView({ user: currentUser, profileUserId, onLogout, onBack
       });
     } catch (err) {
       console.error('Error downloading QR:', err);
-      toast("Couldn't save the QR code", 'error');
+      toast(`Couldn't save the QR code — ${describeError(err)}`, 'error');
     } finally {
       setIsDownloadingQR(false);
     }
@@ -1057,20 +1167,44 @@ export function ProfileView({ user: currentUser, profileUserId, onLogout, onBack
 
             <ModalBody>
               <div ref={qrCardRef} className="flex flex-col items-center gap-4 bg-surface py-2">
-                <div className="rounded-2xl bg-white p-4">
-                  <QRCodeSVG
-                    value={buildProfileQr(profileUser.uid)}
-                    size={160}
-                    level="H"
-                    includeMargin={false}
-                    imageSettings={profileUser.photoURL ? {
-                      src: profileUser.photoURL,
-                      height: 36,
-                      width: 36,
-                      excavate: true,
-                      crossOrigin: 'anonymous',
-                    } : undefined}
-                  />
+                {/* The code has to stay a high-contrast black-on-white square
+                    to remain scannable — that part is not a style choice. So
+                    the branding goes around it: an accent ring, a soft glow,
+                    and four accent brackets that echo the scanner's frame, so
+                    the thing you show and the thing that reads it are visibly
+                    the same pair. */}
+                <div className="relative rounded-3xl bg-accent/10 p-1.5 ring-1 ring-accent/30">
+                  <div className="absolute -inset-2 -z-10 rounded-[28px] bg-accent/10 blur-xl" />
+                  <div className="rounded-2xl bg-white p-4">
+                    <QRCodeSVG
+                      value={buildProfileQr(profileUser.uid)}
+                      size={160}
+                      level="H"
+                      includeMargin={false}
+                      imageSettings={profileUser.photoURL ? {
+                        src: profileUser.photoURL,
+                        height: 36,
+                        width: 36,
+                        excavate: true,
+                        crossOrigin: 'anonymous',
+                      } : undefined}
+                    />
+                  </div>
+
+                  {/* Brackets sit on the ring, clear of the quiet zone the
+                      code needs around it. */}
+                  {([
+                    '-top-px -left-px border-t-2 border-l-2 rounded-tl-2xl',
+                    '-top-px -right-px border-t-2 border-r-2 rounded-tr-2xl',
+                    '-bottom-px -left-px border-b-2 border-l-2 rounded-bl-2xl',
+                    '-bottom-px -right-px border-b-2 border-r-2 rounded-br-2xl',
+                  ]).map((corner) => (
+                    <span
+                      key={corner}
+                      aria-hidden
+                      className={cn('absolute h-5 w-5 border-accent', corner)}
+                    />
+                  ))}
                 </div>
                 <div className="flex items-center gap-2 rounded-full border border-line bg-surface-2 px-3 py-1.5">
                   <Avatar user={profileUser} size="xs" />
@@ -1080,16 +1214,24 @@ export function ProfileView({ user: currentUser, profileUserId, onLogout, onBack
             </ModalBody>
 
             <ModalFooter className="space-y-2">
+              {/* Share leads. Handing the code to someone is the reason the
+                  modal gets opened; saving a PNG is the rarer, more deliberate
+                  act, so it keeps its place but loses the primary styling. */}
+              <button
+                onClick={shareQRCode}
+                disabled={isSharingQR || isDownloadingQR}
+                className="btn-primary flex h-11 w-full items-center justify-center gap-2 text-sm"
+              >
+                {isSharingQR ? <Loader2 size={16} className="animate-spin" /> : <Share2 size={16} />}
+                {isSharingQR ? 'Sharing…' : 'Share'}
+              </button>
               <button
                 onClick={downloadQRCode}
-                disabled={isDownloadingQR}
-                className="btn-primary flex h-11 w-full items-center justify-center gap-2 text-sm"
+                disabled={isDownloadingQR || isSharingQR}
+                className="btn-secondary flex h-11 w-full items-center justify-center gap-2 text-sm"
               >
                 {isDownloadingQR ? <Loader2 size={16} className="animate-spin" /> : <Download size={16} />}
                 {isDownloadingQR ? 'Saving…' : 'Save image'}
-              </button>
-              <button onClick={() => setShowQrCode(false)} className="btn-secondary h-11 w-full text-sm">
-                Close
               </button>
             </ModalFooter>
           </Modal>
